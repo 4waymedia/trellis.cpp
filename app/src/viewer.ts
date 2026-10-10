@@ -6,6 +6,8 @@
 //   - Clay mode: every material shown as flat matte grey, to judge the form
 //     without the paint (uses model-viewer's materials API, so nothing is
 //     reloaded and the original textures are restored exactly);
+//   - Wireframe: the mesh's triangles drawn over the shaded surface, to see
+//     the face density a face target produces (works together with clay);
 //   - Turnaround sheets: four views around the model composited into one
 //     labelled PNG, for the modeler handoff package.
 
@@ -29,6 +31,37 @@ interface MvMaterial {
   };
 }
 
+// Minimal structural types for the three.js objects inside model-viewer's
+// scene that the wireframe overlay touches. model-viewer bundles its own
+// three.js, so new objects are built from existing ones' constructors.
+interface ThreeMaterial {
+  isMeshStandardMaterial?: boolean;
+  wireframe: boolean;
+  transparent: boolean;
+  opacity: number;
+  depthWrite: boolean;
+  polygonOffset: boolean;
+  polygonOffsetFactor: number;
+  polygonOffsetUnits: number;
+  metalness: number;
+  roughness: number;
+  color: { setRGB(r: number, g: number, b: number): void };
+  dispose(): void;
+}
+interface ThreeObject {
+  isMesh?: boolean;
+  userData: Record<string, unknown>;
+  geometry?: unknown;
+  material?: ThreeMaterial | ThreeMaterial[];
+  parent: ThreeObject | null;
+  add(child: ThreeObject): void;
+  remove(child: ThreeObject): void;
+}
+interface ThreeScene {
+  traverse(fn: (o: ThreeObject) => void): void;
+  queueRender(): void;
+}
+
 // Minimal structural type for the bits of <model-viewer> we touch.
 interface ModelViewerEl extends HTMLElement {
   model?: { materials: MvMaterial[] };
@@ -50,6 +83,28 @@ const DEFAULT_ORBIT = "0deg 75deg 105%";
 /** Clay look: mid warm grey (lighter clips to near-white under the neutral environment), rough, non-metallic. */
 const CLAY_COLOR: RGBA = [0.42, 0.42, 0.4, 1];
 const CLAY_ROUGHNESS = 0.9;
+
+/** Wireframe lines: dark, semi-transparent, drawn over the surface. */
+const WIRE_RGB: [number, number, number] = [0.06, 0.07, 0.08];
+const WIRE_OPACITY = 0.5;
+const WIRE_TAG = "trellisWireframe"; // userData flag marking our overlay meshes
+
+/**
+ * model-viewer's three.js scene. NOT public API: model-viewer stores it on the
+ * element under a module-private `Symbol("scene")`, and its `queueRender()`
+ * asks for a redraw. Both exist in the vendored build (public/vendor); if an
+ * update removes them this returns null and the wireframe toggle reports
+ * itself unsupported instead of failing.
+ */
+function threeSceneOf(el: HTMLElement): ThreeScene | null {
+  const key = Object.getOwnPropertySymbols(el).find((s) => s.description === "scene");
+  const scene = key ? (el as unknown as Record<symbol, unknown>)[key] : null;
+  const ok =
+    !!scene &&
+    typeof (scene as ThreeScene).traverse === "function" &&
+    typeof (scene as ThreeScene).queueRender === "function";
+  return ok ? (scene as ThreeScene) : null;
+}
 
 /**
  * Turnaround views: azimuth around the model, at the same 75° elevation the
@@ -105,6 +160,11 @@ export class Viewer {
   private clay = false;
   /** Original materials of the current model while clay is applied; null otherwise. */
   private saved: SavedMaterial[] | null = null;
+  /** Whether the wireframe overlay is wanted; it stays on across model loads. */
+  private wire = false;
+  /** Overlay meshes added for the current model, and the surface materials we offset. */
+  private overlays: ThreeObject[] = [];
+  private offsetMaterials: ThreeMaterial[] = [];
 
   constructor(mount: HTMLElement) {
     const mv = document.createElement("model-viewer") as ModelViewerEl;
@@ -130,6 +190,8 @@ export class Viewer {
         cleanup();
         this.saved = null; // new model, new materials
         if (this.clay) this.applyClay();
+        this.removeWireframe(); // the old overlays left with the old model
+        if (this.wire) this.applyWireframe();
         resolve();
       };
       const onError = (e: Event) => {
@@ -176,8 +238,10 @@ export class Viewer {
    */
   async thumbnail(): Promise<Blob | null> {
     const wasClay = this.clay;
+    const wasWire = this.wire;
     try {
       if (wasClay) this.setClay(false);
+      if (wasWire) this.setWireframe(false);
       // model-viewer's 'load' fires before its auto-framing camera animation has
       // settled, so an immediate toBlob can capture a mid-frame view; give the
       // framing a beat to finish before snapshotting.
@@ -187,6 +251,7 @@ export class Viewer {
       return null;
     } finally {
       if (wasClay) this.setClay(true);
+      if (wasWire) this.setWireframe(true);
     }
   }
 
@@ -240,6 +305,85 @@ export class Viewer {
     this.saved = null;
   }
 
+  // ---- wireframe ----
+
+  /** Whether the wireframe overlay is on. */
+  get isWireframe(): boolean {
+    return this.wire;
+  }
+
+  /** Whether this model-viewer build lets us draw a wireframe (see threeSceneOf). */
+  get supportsWireframe(): boolean {
+    return threeSceneOf(this.el) !== null;
+  }
+
+  /**
+   * Draw the triangles over the shaded surface (true) or remove them (false).
+   * @returns false if unsupported by this model-viewer build (nothing changes).
+   */
+  setWireframe(on: boolean): boolean {
+    if (!this.supportsWireframe) return false;
+    this.wire = on;
+    if (on) this.applyWireframe();
+    else this.removeWireframe();
+    return true;
+  }
+
+  /**
+   * Add, under every model mesh, a second mesh that shares its geometry but
+   * draws it as dark semi-transparent lines. The surface is pushed back with a
+   * polygon offset so the lines don't z-fight with it. Being children of the
+   * model's meshes, the overlays follow the model and leave with it on reload.
+   */
+  private applyWireframe(): void {
+    const scene = threeSceneOf(this.el);
+    if (!scene || this.overlays.length) return;
+    const targets: ThreeObject[] = [];
+    scene.traverse((o) => {
+      const mat = o.material;
+      // Model meshes only: skip our overlays and model-viewer's own helpers
+      // (shadow / ground planes don't use MeshStandardMaterial).
+      if (o.isMesh && !o.userData[WIRE_TAG] && mat && !Array.isArray(mat) && mat.isMeshStandardMaterial) {
+        targets.push(o);
+      }
+    });
+    for (const mesh of targets) {
+      const surface = mesh.material as ThreeMaterial;
+      const MaterialCtor = surface.constructor as new () => ThreeMaterial;
+      const MeshCtor = mesh.constructor as new (geometry: unknown, material: ThreeMaterial) => ThreeObject;
+      const lines = new MaterialCtor(); // a fresh MeshStandardMaterial: no textures
+      lines.wireframe = true;
+      lines.color.setRGB(...WIRE_RGB);
+      lines.metalness = 0;
+      lines.roughness = 1;
+      lines.transparent = true;
+      lines.opacity = WIRE_OPACITY;
+      lines.depthWrite = false;
+      const overlay = new MeshCtor(mesh.geometry, lines);
+      overlay.userData[WIRE_TAG] = true;
+      mesh.add(overlay);
+      this.overlays.push(overlay);
+      if (!surface.polygonOffset) {
+        surface.polygonOffset = true;
+        surface.polygonOffsetFactor = 1;
+        surface.polygonOffsetUnits = 1;
+        this.offsetMaterials.push(surface);
+      }
+    }
+    scene.queueRender();
+  }
+
+  private removeWireframe(): void {
+    for (const overlay of this.overlays) {
+      overlay.parent?.remove(overlay);
+      (overlay.material as ThreeMaterial).dispose();
+    }
+    for (const m of this.offsetMaterials) m.polygonOffset = false;
+    this.overlays = [];
+    this.offsetMaterials = [];
+    threeSceneOf(this.el)?.queueRender();
+  }
+
   // ---- turnaround sheet ----
 
   /**
@@ -261,8 +405,10 @@ export class Viewer {
       fov: this.el.fieldOfView,
     };
     const wasClay = this.clay;
+    const wasWire = this.wire;
     try {
       if (options.clay !== wasClay) this.setClay(options.clay);
+      if (wasWire) this.setWireframe(false); // sheets show the surface only
       const tiles: ImageBitmap[] = [];
       for (const view of SHEET_VIEWS) {
         this.el.cameraOrbit = `${view.theta}deg 75deg auto`;
@@ -281,6 +427,7 @@ export class Viewer {
       return await composeSheet(tiles, SHEET_VIEWS.map((v) => v.label));
     } finally {
       if (this.clay !== wasClay) this.setClay(wasClay);
+      if (wasWire) this.setWireframe(true);
       this.el.cameraOrbit = camera.orbit;
       this.el.cameraTarget = camera.target;
       this.el.fieldOfView = camera.fov;
