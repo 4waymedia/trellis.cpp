@@ -10,12 +10,17 @@
 // (matchPreset), so editing a value by hand simply makes it "Custom" and old
 // gallery records are labelled correctly too.
 //
-// Texture format: Unreal-bound presets use PNG. The engine's default WebP
-// textures (glTF extension EXT_texture_webp) are smaller, but not every DCC
-// tool or engine importer reads them; PNG opens everywhere. Only Showcase,
-// which is for viewing, keeps WebP.
+// Texture format is not a user control: it follows the preset (texturesFor).
+// It only changes how the colors are stored in the GLB, not the model. The
+// engine's default WebP (glTF extension EXT_texture_webp) is far smaller, but
+// not every DCC tool or engine importer reads it, and a GLB that requires it
+// won't open at all there; PNG opens everywhere. So only Showcase, which is
+// for viewing, keeps WebP; every other preset, and Custom, uses PNG.
 
 import { formatFaces, type GenParams, type TextureFormat } from "./types";
+
+/** Texture format for a Custom budget (no preset): the format every tool can open. */
+const CUSTOM_TEXTURES: TextureFormat = "png";
 
 export type PresetId = "handoff" | "showcase" | "hero" | "game" | "lite" | "icon";
 
@@ -77,15 +82,21 @@ export function getPreset(id: PresetId): Preset {
 }
 
 /**
- * The preset whose values exactly match these params, or null for "Custom".
+ * The preset whose face target and atlas match these params, or null for
+ * "Custom". Every preset has a distinct faces/atlas pair, so texture format
+ * isn't part of the match (it follows from the preset; see texturesFor).
  * Missing fields (gallery records from before they existed) count as the
- * server defaults: auto faces, auto atlas, WebP.
+ * server defaults: auto faces, auto atlas.
  */
-export function matchPreset(p: GenParams): Preset | null {
+export function matchPreset(p: Pick<GenParams, "faces" | "atlas">): Preset | null {
   const faces = p.faces ?? 0;
   const atlas = p.atlas ?? 0;
-  const textures: TextureFormat = p.textures ?? "webp";
-  return PRESETS.find((x) => x.faces === faces && x.atlas === atlas && x.textures === textures) ?? null;
+  return PRESETS.find((x) => x.faces === faces && x.atlas === atlas) ?? null;
+}
+
+/** Texture format for a face/atlas budget: the matching preset's, else PNG for Custom. */
+export function texturesFor(p: Pick<GenParams, "faces" | "atlas">): TextureFormat {
+  return matchPreset(p)?.textures ?? CUSTOM_TEXTURES;
 }
 
 /**

@@ -9,8 +9,8 @@ import { isTauri, listen, revealInOutput, saveBytes, saveToOutputDir, writeHando
 import { inspectGlb, type GlbInfo } from "./glb";
 import { buildHandoff } from "./handoff";
 import { Viewer } from "./viewer";
-import { DEFAULT_PRESET, PRESETS, getPreset, matchPreset, tileLabel, type PresetId } from "./presets";
-import { DEFAULT_PARAMS, formatFaces, type GenParams, type GenRecord, type TextureFormat } from "./types";
+import { DEFAULT_PRESET, PRESETS, getPreset, matchPreset, texturesFor, tileLabel, type PresetId } from "./presets";
+import { DEFAULT_PARAMS, formatFaces, type GenParams, type GenRecord } from "./types";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -27,6 +27,7 @@ const cancelBtn = $<HTMLButtonElement>("cancel-btn");
 const resetViewBtn = $<HTMLButtonElement>("reset-view");
 const saveGlbBtn = $<HTMLButtonElement>("save-glb");
 const clayBtn = $<HTMLButtonElement>("clay-toggle");
+const wireBtn = $<HTMLButtonElement>("wire-toggle");
 const exportBtn = $<HTMLButtonElement>("export-handoff");
 const viewerCaption = $("viewer-caption");
 const galleryEl = $("gallery");
@@ -68,21 +69,20 @@ const presetSelect = $<HTMLSelectElement>("ctl-preset");
 const presetHint = $("preset-hint");
 const facesSelect = $<HTMLSelectElement>("ctl-faces");
 const atlasSelect = $<HTMLSelectElement>("ctl-atlas");
-const texturesSelect = $<HTMLSelectElement>("ctl-textures");
 const CUSTOM = "custom";
 
 function readParams(): GenParams {
   const res = parseInt(($("ctl-res") as HTMLSelectElement).value, 10);
   const seed = parseInt(($("ctl-seed") as HTMLInputElement).value, 10);
-  return {
+  const params = {
     resolution: (res === 512 || res === 1536 ? res : 1024) as GenParams["resolution"],
     seed: isNaN(seed) ? DEFAULT_PARAMS.seed : seed,
     bgRemoval: ($("ctl-bg") as HTMLSelectElement).value as GenParams["bgRemoval"],
     uv: ($("ctl-uv") as HTMLSelectElement).value as GenParams["uv"],
     faces: parseInt(facesSelect.value, 10) || 0,
     atlas: parseInt(atlasSelect.value, 10) || 0,
-    textures: texturesSelect.value as TextureFormat,
   };
+  return { ...params, textures: texturesFor(params) }; // texture format follows the preset
 }
 
 /** Show `p` in the controls (gallery reload). Missing fields fall back to the server defaults. */
@@ -93,7 +93,6 @@ function applyParams(p: GenParams): void {
   ($("ctl-uv") as HTMLSelectElement).value = p.uv;
   facesSelect.value = String(p.faces ?? 0);
   atlasSelect.value = String(p.atlas ?? 0);
-  texturesSelect.value = p.textures ?? "webp";
   syncPresetFromControls();
 }
 
@@ -105,12 +104,11 @@ function populatePresets(): void {
   presetSelect.add(new Option("Custom", CUSTOM));
 }
 
-/** Choosing a preset writes its budget into the faces/atlas/textures selects. */
+/** Choosing a preset writes its face target and atlas into the Customize selects. */
 function applyPresetToControls(id: PresetId): void {
   const preset = getPreset(id);
   facesSelect.value = String(preset.faces);
   atlasSelect.value = String(preset.atlas);
-  texturesSelect.value = preset.textures;
   syncPresetFromControls();
 }
 
@@ -118,14 +116,14 @@ function applyPresetToControls(id: PresetId): void {
 function syncPresetFromControls(): void {
   const preset = matchPreset(readParams());
   presetSelect.value = preset ? preset.id : CUSTOM;
-  presetHint.textContent = preset ? preset.hint : "Custom output budget.";
+  presetHint.textContent = preset ? preset.hint : "Custom face/atlas budget (PNG textures).";
 }
 
 presetSelect.addEventListener("change", () => {
   if (presetSelect.value !== CUSTOM) applyPresetToControls(presetSelect.value as PresetId);
   else syncPresetFromControls(); // Custom is just a label; it never changes the values
 });
-[facesSelect, atlasSelect, texturesSelect].forEach((el) => el.addEventListener("change", syncPresetFromControls));
+[facesSelect, atlasSelect].forEach((el) => el.addEventListener("change", syncPresetFromControls));
 
 // ---- toasts ----
 function toast(msg: string, kind: "" | "ok" | "err" = ""): void {
@@ -436,6 +434,7 @@ function setViewerTools(on: boolean): void {
   resetViewBtn.disabled = !on;
   saveGlbBtn.disabled = !on;
   clayBtn.disabled = !on;
+  wireBtn.disabled = !on;
   // The handoff export writes a folder on disk, so it needs the desktop app.
   exportBtn.disabled = !on || !isTauri();
 }
@@ -467,6 +466,21 @@ exportBtn.addEventListener("click", async () => {
   } finally {
     exportBtn.disabled = false;
   }
+});
+
+/**
+ * Wireframe toggle: triangles over the surface (combines with Clay). Stays on
+ * for the next model. Relies on model-viewer internals (viewer.ts), so if this
+ * build doesn't expose them the button disables itself and says why.
+ */
+wireBtn.addEventListener("click", () => {
+  if (!viewer.setWireframe(!viewer.isWireframe)) {
+    wireBtn.disabled = true;
+    wireBtn.title = "Wireframe isn't available with this version of the 3D viewer";
+    toast("Wireframe isn't available with this version of the 3D viewer.", "err");
+    return;
+  }
+  wireBtn.setAttribute("aria-pressed", String(viewer.isWireframe));
 });
 
 /** Clay toggle: untextured matte grey. Stays on for the next model until switched off. */
