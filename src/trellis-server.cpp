@@ -6,7 +6,10 @@
 //                      (threshold|birefnet), "uv" (xatlas = default, unique
 //                      chart space; box = faster projection), "band" (narrow-band
 //                      DC remesh band width, default 1 — see --band), "model"
-//                      (trellis|pixal3d — one directory holds both), and for
+//                      (trellis|pixal3d — one directory holds both), "faces"
+//                      (QEM decimation face target, >= 1000 or "auto" — see
+//                      --faces), "atlas" (UV atlas px, 256..8192 or "auto"),
+//                      "webp" (on|off; off = PNG textures), and for
 //                      pixal3d the camera: "fov" (degrees), "mesh_scale",
 //                      "extend_pixel". Returns model/gltf-binary.
 //
@@ -106,6 +109,23 @@ int main(int argc, char** argv) {
         if (req.has_file("bg_removal")) p.birefnet = (req.get_file_value("bg_removal").content == "birefnet") ? 1 : 0;
         if (req.has_file("uv")) p.xatlas = (req.get_file_value("uv").content == "xatlas");
         if (req.has_file("band")) p.band = atoi(req.get_file_value("band").content.c_str());
+        if (req.has_file("atlas")) {
+            std::string error;
+            if (!trellis::parse_atlas_arg(req.get_file_value("atlas").content.c_str(), p, error)) {
+                res.status = 400;
+                res.set_content(error + "\n", "text/plain");
+                return;
+            }
+        }
+        if (req.has_file("faces")) {
+            std::string error;
+            if (!trellis::parse_faces_arg(req.get_file_value("faces").content.c_str(), p, error) ||
+                !trellis::check_faces_compat(p, error)) {   // launch-time --decim + per-request faces
+                res.status = 400;
+                res.set_content(error + "\n", "text/plain");
+                return;
+            }
+        }
         // Both families share one model directory (the Pixal3D flows carry a pixal3d_ prefix),
         // so a single resident server can serve either -- the client just has to say which.
         if (req.has_file("model")) {
@@ -152,9 +172,11 @@ int main(int argc, char** argv) {
                 res.set_content("{\"error\":\"failed to stage input image\"}", "application/json");
                 return;
             }
-            fprintf(stderr, "[trellis-server] generate: %zu-byte image, seed %u, res %s, bg %s, uv %s\n",
+            fprintf(stderr, "[trellis-server] generate: %zu-byte image, seed %u, res %s, bg %s, uv %s, faces %d, atlas %s, webp %s\n",
                     image.content.size(), p.seed, p.cascade ? std::to_string(p.hr_res).c_str() : "512",
-                    p.birefnet < 0 ? "auto" : (p.birefnet ? "birefnet" : "threshold"), p.xatlas ? "xatlas" : "box");
+                    p.birefnet < 0 ? "auto" : (p.birefnet ? "birefnet" : "threshold"), p.xatlas ? "xatlas" : "box",
+                    trellis::qem_face_target(p), p.tex > 0 ? std::to_string(p.tex).c_str() : "auto",
+                    p.webp < 0 ? "auto" : (p.webp ? "on" : "off"));
             try {
                 int rc = trellis_run(p);
                 if (rc == 0) glb = read_file_bytes(p.output);
