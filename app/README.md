@@ -13,10 +13,13 @@ don't need this directory unless you're developing the app.
 ```
 src/            web UI (Vite + TypeScript, framework-free)
   api.ts        POST /generate, GET /health against trellis-server
-  viewer.ts     <model-viewer> wrapper (vendored in public/vendor)
+  viewer.ts     <model-viewer> wrapper (vendored in public/vendor): clay mode, turnaround sheets
   store.ts      IndexedDB gallery (input + GLB + thumbnail blobs)
   queue.ts      in-memory generation queue + its thumbnail strip (server runs one job at a time)
   prefs.ts      UI preferences in localStorage (kept out of the installer's config.json)
+  glb.ts        reads a GLB's face count + embedded textures (caption, server check, handoff)
+  presets.ts    output presets (Modeler handoff, Showcase, Hero, Game prop, Lite, Icon)
+  handoff.ts    assembles the modeler handoff package (files + notes.txt)
   config.ts     resolves server host/port/models (Tauri command or localStorage)
   settings.ts   models dir / gpu / port panel
   main.ts       wires the generate flow, queue hand-off, gallery, status polling

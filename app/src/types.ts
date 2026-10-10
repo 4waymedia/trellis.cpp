@@ -3,6 +3,8 @@
 export type Resolution = 512 | 1024 | 1536;
 export type BgRemoval = "auto" | "birefnet" | "threshold";
 export type Uv = "xatlas" | "box";
+/** GLB texture encoding: WebP is smaller, PNG opens in every DCC tool / importer. */
+export type TextureFormat = "webp" | "png";
 
 /** Generation knobs mapped onto trellis-server's POST /generate form fields. */
 export interface GenParams {
@@ -10,14 +12,35 @@ export interface GenParams {
   seed: number;
   bgRemoval: BgRemoval;
   uv: Uv;
+  /**
+   * QEM decimation face target (server field `faces`, CLI `--faces`).
+   * 0 or absent = the server's default: 300K at 1024/1536, 150K at 512.
+   * Optional because gallery records saved before this field existed lack it.
+   */
+  faces?: number;
+  /** UV atlas size in px (server field `atlas`, CLI `--atlas`). 0 or absent = default (2048, 1024 at res 512). */
+  atlas?: number;
+  /** Texture encoding (server field `webp=off` for PNG). Absent = WebP, the server default. */
+  textures?: TextureFormat;
 }
 
+/** Defaults equal the "Showcase" preset (presets.ts): the engine's own defaults. */
 export const DEFAULT_PARAMS: GenParams = {
   resolution: 1024,
   seed: 42,
   bgRemoval: "auto",
   uv: "xatlas",
+  faces: 0,
+  atlas: 0,
+  textures: "webp",
 };
+
+/** Compact face count: 49812 -> "49.8K", 300000 -> "300K", 1250000 -> "1.25M". */
+export function formatFaces(n: number): string {
+  if (n >= 1e6) return `${+(n / 1e6).toFixed(2)}M`;
+  if (n >= 1e3) return `${+(n / 1e3).toFixed(1)}K`;
+  return String(n);
+}
 
 /** Written by the installer, read by the Tauri shell + surfaced to the UI. */
 export interface AppConfig {

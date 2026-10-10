@@ -120,6 +120,15 @@ body {
 .ctl select:focus, .ctl input:focus { outline: none; border-color: var(--accent); }
 .ctl select option { background: var(--panel-2); color: var(--text); }
 
+/* Output budget block: preset + a compact faces/atlas/textures row. */
+.output-group {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 10px; border: 1px solid var(--border); border-radius: 8px;
+}
+.preset-hint { font-size: 11px; line-height: 1.35; min-height: 15px; }
+.ctl-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.ctl-row .ctl select { padding: 6px 4px; min-width: 0; }
+
 .primary {
   background: var(--accent); color: #fff; border: none; border-radius: 8px;
   padding: 11px; font-size: 14px; font-weight: 600; cursor: pointer;
@@ -154,6 +163,7 @@ body {
 }
 .tool-btn:hover:not(:disabled) { border-color: var(--accent); }
 .tool-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.tool-btn[aria-pressed="true"] { border-color: var(--accent); background: #20283a; color: #fff; }
 .viewer-caption { margin-left: auto; font-size: 12px; }
 
 /* ---- gallery ---- */

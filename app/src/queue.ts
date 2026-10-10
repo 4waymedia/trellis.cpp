@@ -14,7 +14,8 @@
 // panel. Starting jobs, and deciding when to, stays in main.ts.
 
 import { newId } from "./store";
-import type { GenParams } from "./types";
+import { matchPreset, tileLabel } from "./presets";
+import { formatFaces, type GenParams } from "./types";
 
 /** One image waiting to be generated. */
 export interface QueueItem {
@@ -124,7 +125,7 @@ export class GenerationQueue {
 
       const meta = document.createElement("div");
       meta.className = "gmeta";
-      meta.textContent = `${q.params.resolution}`;
+      meta.textContent = tileLabel(q.params);
       tile.appendChild(meta);
 
       const del = document.createElement("button");
@@ -142,7 +143,17 @@ export class GenerationQueue {
   }
 }
 
-/** Short human-readable summary, e.g. "1024 · seed 42 · birefnet · xatlas". */
+/** Human-readable summary, e.g. "Game prop · 1024 · seed 42 · 50K faces · 2048 px · PNG · auto bg · xatlas". */
 export function describeParams(p: GenParams): string {
-  return `${p.resolution} · seed ${p.seed} · ${p.bgRemoval} · ${p.uv}`;
+  const preset = matchPreset(p);
+  return [
+    preset ? preset.label : "Custom",
+    `${p.resolution}`,
+    `seed ${p.seed}`,
+    p.faces ? `${formatFaces(p.faces)} faces` : "auto faces",
+    p.atlas ? `${p.atlas} px` : "auto atlas",
+    (p.textures ?? "webp").toUpperCase(),
+    `${p.bgRemoval} bg`,
+    p.uv,
+  ].join(" · ");
 }

@@ -61,6 +61,44 @@
               <option value="box">box (faster)</option>
             </select>
           </label>
+          <!-- Output budget. The preset sets the three selects below it; editing
+               any of them by hand switches the preset to Custom (presets.ts). -->
+          <div class="output-group">
+            <label class="ctl">
+              <span>Output preset</span>
+              <select id="ctl-preset"></select>
+            </label>
+            <div id="preset-hint" class="preset-hint muted"></div>
+            <div class="ctl-row">
+              <label class="ctl" title="Mesh decimation target. Lower = lighter file and faster UV unwrap; the texture keeps the surface detail. auto = 300K (150K at res 512).">
+                <span>Faces</span>
+                <select id="ctl-faces">
+                  <option value="0" selected>auto</option>
+                  <option value="150000">150K</option>
+                  <option value="100000">100K</option>
+                  <option value="50000">50K</option>
+                  <option value="25000">25K</option>
+                  <option value="10000">10K</option>
+                </select>
+              </label>
+              <label class="ctl" title="Texture size in px (square): base color + metallic/roughness. auto = 2048 (1024 at res 512).">
+                <span>Atlas</span>
+                <select id="ctl-atlas">
+                  <option value="0" selected>auto</option>
+                  <option value="1024">1024</option>
+                  <option value="2048">2048</option>
+                  <option value="4096">4096</option>
+                </select>
+              </label>
+              <label class="ctl" title="WebP is smaller; PNG opens in every 3D tool and engine importer.">
+                <span>Textures</span>
+                <select id="ctl-textures">
+                  <option value="webp" selected>WebP</option>
+                  <option value="png">PNG</option>
+                </select>
+              </label>
+            </div>
+          </div>
           <label class="ctl">
             <span>Seed</span>
             <input id="ctl-seed" type="number" min="0" step="1" value="42" />
@@ -89,7 +127,11 @@
         <div id="viewer-mount" class="viewer-mount"></div>
         <div class="viewer-toolbar">
           <button id="reset-view" class="tool-btn" disabled>Reset view</button>
+          <button id="clay-toggle" class="tool-btn" aria-pressed="false" disabled
+            title="Show the model untextured (matte grey) to judge the form without the paint">Clay</button>
           <button id="save-glb" class="tool-btn" disabled>Save GLB…</button>
+          <button id="export-handoff" class="tool-btn" disabled
+            title="Write a folder for a 3D modeler: GLB, source image, textures, turnaround sheets and notes">Export handoff…</button>
           <span id="viewer-caption" class="viewer-caption muted"></span>
         </div>
       </section>

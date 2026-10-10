@@ -86,8 +86,10 @@ click → rotate the result.
    (xatlas / box). Defaults match the CLI.
 3. **Generate 3D** — this takes a few minutes; a live stage line shows progress.
 4. **Inspect** — rotate and zoom in the interactive preview (Google's three.js-based
-   `<model-viewer>`); **Reset view** re-frames the camera and **Save GLB…** exports
-   the model.
+   `<model-viewer>`); **Reset view** re-frames the camera, **Clay** shows the mesh
+   untextured to judge the form, and **Save GLB…** exports the model.
+   **Export handoff…** writes a folder for a 3D modeler: the GLB, source image,
+   extracted textures, textured + clay turnaround sheets and a `notes.txt`.
 5. **Reuse** — every result is kept in a local **gallery** (IndexedDB): click a
    thumbnail to reload its model, input image, and settings — even after restarting
    the app.
@@ -160,8 +162,9 @@ Other useful CLI flags:
 | `--res 512\|1024\|1536` | geometry resolution (512 = light path, no cascade) |
 | `--bg-removal threshold\|birefnet` | default **auto**: pre-matted images keep their alpha, otherwise the BiRefNet matte (~13s on GPU). The plain white-bg keyer cuts specular highlights out of the alpha — the flow then generates holes there — so it is opt-in only |
 | `--no-texture` | geometry only |
-| `--decim GRID` | legacy cluster-grid decimation (default: quadric simplify to 300K faces @1024 / 150K @512; `0` = keep the full-res mesh) |
-| `--atlas PX` | UV atlas size (default 2048 @1024 / 1024 @512) |
+| `--faces N` | QEM decimation face target, ≥ 1000 (default 300K @1024/1536, 150K @512). Lower gives lighter game/web assets and a faster UV unwrap; the baked texture keeps the surface detail |
+| `--decim GRID` | legacy cluster-grid decimation instead of QEM (`0` = keep the full-res mesh); not combinable with `--faces` |
+| `--atlas PX` | UV atlas size, 256–8192 px: the side length of the baked base-color and metallic/roughness textures (default 2048 @1024 / 1024 @512) |
 | `--box-uv` | voxel-native 6-way box projection instead of the default xatlas unwrap (O(faces), faster, looser packing) |
 | `--seed N` | RNG seed |
 | `--model trellis\|pixal3d` | which family of flow weights `--models` holds (see [Pixal3D backend](docs/pixal3d/README.md)) |
@@ -214,7 +217,10 @@ available for test binaries and backwards-compatible automation.
 GET  /health     -> "ok"
 POST /generate      multipart/form-data with an "image" file part; optional text
                     fields "seed", "resolution" (512/1024/1536), "bg_removal"
-                    (threshold|birefnet). Returns model/gltf-binary.
+                    (threshold|birefnet), "faces" (QEM face target, >= 1000 or
+                    "auto"), "atlas" (UV atlas px, 256..8192 or "auto"), "webp"
+                    (on|off; off = PNG textures, the most compatible for DCC
+                    tools). Invalid values return 400. Returns model/gltf-binary.
 ```
 
 Launch-time flags (including `--res`) set the per-request defaults; each request can

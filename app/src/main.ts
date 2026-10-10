@@ -5,9 +5,12 @@ import { getPrefs } from "./prefs";
 import { GenerationQueue } from "./queue";
 import { renderSettings } from "./settings";
 import { all, clear as clearStore, del as removeRecord, get as getRecord, isEphemeral, newId, put } from "./store";
-import { isTauri, listen, saveBytes, saveToOutputDir } from "./tauri";
+import { isTauri, listen, revealInOutput, saveBytes, saveToOutputDir, writeHandoffFolder } from "./tauri";
+import { inspectGlb, type GlbInfo } from "./glb";
+import { buildHandoff } from "./handoff";
 import { Viewer } from "./viewer";
-import { DEFAULT_PARAMS, type GenParams, type GenRecord } from "./types";
+import { DEFAULT_PRESET, PRESETS, getPreset, matchPreset, tileLabel, type PresetId } from "./presets";
+import { DEFAULT_PARAMS, formatFaces, type GenParams, type GenRecord, type TextureFormat } from "./types";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -23,6 +26,8 @@ const progressElapsed = $("progress-elapsed");
 const cancelBtn = $<HTMLButtonElement>("cancel-btn");
 const resetViewBtn = $<HTMLButtonElement>("reset-view");
 const saveGlbBtn = $<HTMLButtonElement>("save-glb");
+const clayBtn = $<HTMLButtonElement>("clay-toggle");
+const exportBtn = $<HTMLButtonElement>("export-handoff");
 const viewerCaption = $("viewer-caption");
 const galleryEl = $("gallery");
 const clearGalleryBtn = $("clear-gallery");
@@ -59,6 +64,13 @@ const queue = new GenerationQueue(
 );
 
 // ---- controls -> params ----
+const presetSelect = $<HTMLSelectElement>("ctl-preset");
+const presetHint = $("preset-hint");
+const facesSelect = $<HTMLSelectElement>("ctl-faces");
+const atlasSelect = $<HTMLSelectElement>("ctl-atlas");
+const texturesSelect = $<HTMLSelectElement>("ctl-textures");
+const CUSTOM = "custom";
+
 function readParams(): GenParams {
   const res = parseInt(($("ctl-res") as HTMLSelectElement).value, 10);
   const seed = parseInt(($("ctl-seed") as HTMLInputElement).value, 10);
@@ -67,15 +79,53 @@ function readParams(): GenParams {
     seed: isNaN(seed) ? DEFAULT_PARAMS.seed : seed,
     bgRemoval: ($("ctl-bg") as HTMLSelectElement).value as GenParams["bgRemoval"],
     uv: ($("ctl-uv") as HTMLSelectElement).value as GenParams["uv"],
+    faces: parseInt(facesSelect.value, 10) || 0,
+    atlas: parseInt(atlasSelect.value, 10) || 0,
+    textures: texturesSelect.value as TextureFormat,
   };
 }
 
+/** Show `p` in the controls (gallery reload). Missing fields fall back to the server defaults. */
 function applyParams(p: GenParams): void {
   ($("ctl-res") as HTMLSelectElement).value = String(p.resolution);
   ($("ctl-seed") as HTMLInputElement).value = String(p.seed);
   ($("ctl-bg") as HTMLSelectElement).value = p.bgRemoval;
   ($("ctl-uv") as HTMLSelectElement).value = p.uv;
+  facesSelect.value = String(p.faces ?? 0);
+  atlasSelect.value = String(p.atlas ?? 0);
+  texturesSelect.value = p.textures ?? "webp";
+  syncPresetFromControls();
 }
+
+// ---- output presets (presets.ts) ----
+/** Fill the preset dropdown: every preset, then Custom. */
+function populatePresets(): void {
+  presetSelect.innerHTML = "";
+  for (const p of PRESETS) presetSelect.add(new Option(p.label, p.id));
+  presetSelect.add(new Option("Custom", CUSTOM));
+}
+
+/** Choosing a preset writes its budget into the faces/atlas/textures selects. */
+function applyPresetToControls(id: PresetId): void {
+  const preset = getPreset(id);
+  facesSelect.value = String(preset.faces);
+  atlasSelect.value = String(preset.atlas);
+  texturesSelect.value = preset.textures;
+  syncPresetFromControls();
+}
+
+/** Point the preset dropdown at whatever the three selects now add up to (or Custom). */
+function syncPresetFromControls(): void {
+  const preset = matchPreset(readParams());
+  presetSelect.value = preset ? preset.id : CUSTOM;
+  presetHint.textContent = preset ? preset.hint : "Custom output budget.";
+}
+
+presetSelect.addEventListener("change", () => {
+  if (presetSelect.value !== CUSTOM) applyPresetToControls(presetSelect.value as PresetId);
+  else syncPresetFromControls(); // Custom is just a label; it never changes the values
+});
+[facesSelect, atlasSelect, texturesSelect].forEach((el) => el.addEventListener("change", syncPresetFromControls));
 
 // ---- toasts ----
 function toast(msg: string, kind: "" | "ok" | "err" = ""): void {
@@ -211,6 +261,58 @@ function startNextQueued(): void {
   void doGenerate(next.params);
 }
 
+// ---- viewer caption + server check ----
+/**
+ * Caption under the viewer: settings, file size and the GLB's actual face
+ * count, e.g. "knight.png · 1024 · seed 42 · 8.1 MB · 49.8K faces".
+ *
+ * @returns what the GLB contains (face count, embedded textures), or null if
+ *          it couldn't be read; the caption then simply omits the face count.
+ */
+async function showCaption(name: string | null, params: GenParams, glb: Blob): Promise<GlbInfo | null> {
+  const parts = [`${params.resolution}`, `seed ${params.seed}`, `${(glb.size / 1e6).toFixed(1)} MB`];
+  if (name) parts.unshift(name);
+  const info = await inspectGlb(glb).catch(() => null);
+  if (info) parts.push(`${formatFaces(info.faces)} faces`);
+  viewerCaption.textContent = parts.join(" · ");
+  return info;
+}
+
+/**
+ * Warn when the result shows the server ignored part of the request.
+ *
+ * Note: trellis-server ignores form fields it doesn't know, so a build that
+ * predates `faces`/`atlas` returns its defaults with no error. Checks:
+ *   - faces: QEM can stop slightly above its target on hard geometry, so only
+ *     a clear miss (more than 1.5x) counts;
+ *   - atlas: the baked textures are exactly atlas x atlas (uv_bake.cpp), so any
+ *     difference counts;
+ *   - PNG: any WebP texture means `webp=off` was not applied.
+ */
+async function checkServerHonored(params: GenParams, info: GlbInfo | null): Promise<void> {
+  if (!info) return;
+  const missed: string[] = [];
+  if (params.faces && info.faces > params.faces * 1.5) {
+    missed.push(`${formatFaces(params.faces)} faces (got ${formatFaces(info.faces)})`);
+  }
+  const base = info.images.find((i) => i.role === "basecolor");
+  if (params.atlas && base) {
+    const bmp = await createImageBitmap(base.data).catch(() => null);
+    if (bmp && bmp.width !== params.atlas) missed.push(`${params.atlas} px atlas (got ${bmp.width})`);
+    bmp?.close();
+  }
+  if (params.textures === "png" && info.images.some((i) => i.mimeType === "image/webp")) {
+    missed.push("PNG textures (got WebP)");
+  }
+  if (missed.length) {
+    toast(
+      `The server ignored: ${missed.join(", ")}. This trellis-server probably predates ` +
+        "these settings; point Settings at a newer build.",
+      "err",
+    );
+  }
+}
+
 // ---- generate ----
 function fmtElapsed(ms: number): string {
   const s = Math.floor(ms / 1000);
@@ -294,7 +396,7 @@ async function doGenerate(params: GenParams = readParams()): Promise<void> {
     }
     activeId = rec.id;
     setViewerTools(true);
-    viewerCaption.textContent = `${params.resolution} · seed ${params.seed} · ${(glb.size / 1e6).toFixed(1)} MB`;
+    void checkServerHonored(params, await showCaption(null, params, glb));
     await refreshGallery();
 
     // 3) Best-effort 3D preview + gallery thumbnail — never blocks the save above.
@@ -333,8 +435,45 @@ cancelBtn.addEventListener("click", () => abort?.abort());
 function setViewerTools(on: boolean): void {
   resetViewBtn.disabled = !on;
   saveGlbBtn.disabled = !on;
+  clayBtn.disabled = !on;
+  // The handoff export writes a folder on disk, so it needs the desktop app.
+  exportBtn.disabled = !on || !isTauri();
 }
 resetViewBtn.addEventListener("click", () => viewer.resetView());
+
+/**
+ * Export a modeler handoff package (handoff.ts) for the result in the viewer,
+ * then open its folder. The turnaround sheets are rendered from the live
+ * viewer, so the camera moves briefly while it runs.
+ */
+exportBtn.addEventListener("click", async () => {
+  const rec = activeId ? await getRecord(activeId) : undefined;
+  if (!rec) return;
+  exportBtn.disabled = true;
+  try {
+    const pkg = await buildHandoff(rec, viewer);
+    const dir = await writeHandoffFolder(pkg.folder, pkg.files);
+    toast(`Handoff exported (${pkg.files.length} files) to ${dir}`, "ok");
+    if (pkg.webpTextures) {
+      toast(
+        "This model has WebP textures, which some 3D tools can't open. For the modeler, " +
+          "regenerate it with the Modeler handoff preset (PNG).",
+        "err",
+      );
+    }
+    await revealInOutput(dir).catch(() => {});
+  } catch (e) {
+    toast(`Handoff export failed: ${(e as Error).message ?? e}`, "err");
+  } finally {
+    exportBtn.disabled = false;
+  }
+});
+
+/** Clay toggle: untextured matte grey. Stays on for the next model until switched off. */
+clayBtn.addEventListener("click", () => {
+  viewer.setClay(!viewer.isClay);
+  clayBtn.setAttribute("aria-pressed", String(viewer.isClay));
+});
 saveGlbBtn.addEventListener("click", async () => {
   if (!currentGlb) return;
   const bytes = new Uint8Array(await currentGlb.arrayBuffer());
@@ -366,7 +505,7 @@ async function loadRecord(id: string): Promise<void> {
   currentName = rec.name;
   activeId = rec.id;
   setViewerTools(true);
-  viewerCaption.textContent = `${rec.name} · ${rec.params.resolution} · seed ${rec.params.seed}`;
+  await showCaption(rec.name, rec.params, rec.glb);
   updateGenerateEnabled();
   await refreshGallery();
 }
@@ -394,7 +533,7 @@ async function refreshGallery(): Promise<void> {
 
     const meta = document.createElement("div");
     meta.className = "gmeta";
-    meta.textContent = `${r.params.resolution}`;
+    meta.textContent = tileLabel(r.params);
     item.appendChild(meta);
 
     const delBtn = document.createElement("button");
@@ -466,6 +605,8 @@ listen<string>("server-log", (line) => {
 
 // ---- boot ----
 async function boot(): Promise<void> {
+  populatePresets();
+  applyPresetToControls(DEFAULT_PRESET);
   setViewerTools(false);
   await refreshGallery();
   await pollHealth();
