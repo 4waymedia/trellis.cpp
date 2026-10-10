@@ -910,8 +910,13 @@ int trellis_run(const trellis::TrellisParams& cfg) {
         } else if (cfg.decim == 0) {
             dv = sverts; df = sfaces;
         } else {
+            // Face budget: --faces / server "faces", else the per-cascade default (issue #43).
+            const int qem_target = trellis::qem_face_target(cfg);
+            printf("  QEM simplify: F=%d -> target %d faces%s\n", (int)sfaces.size()/3, qem_target,
+                   cfg.faces > 0 ? "" : " (default)");
+            fflush(stdout);
             trellis::decimate_qem(sverts, (int)sverts.size()/3, sfaces, (int)sfaces.size()/3,
-                                  cascade ? 300000 : 150000, dv, df);
+                                  qem_target, dv, df);
             if (!std::getenv("TRELLIS_QEM_PRESERVE_TOPOLOGY") &&
                 !std::getenv("TRELLIS_QEM_COLLISION_GUARD")) {
                 trellis::weld_vertices(dv, df, nullptr, 1.0f / ((float)so.res * 8.0f));
