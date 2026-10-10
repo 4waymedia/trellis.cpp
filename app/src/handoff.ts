@@ -18,7 +18,6 @@
 // tauri.ts (writeHandoffFolder), so the assembly stays testable in a browser.
 
 import { imageExt, inspectGlb, type GlbInfo } from "./glb";
-import { matchPreset } from "./presets";
 import { formatFaces, type GenRecord } from "./types";
 import type { Viewer } from "./viewer";
 
@@ -97,7 +96,6 @@ async function handoffNotes(
   webpTextures: boolean,
 ): Promise<string> {
   const p = rec.params;
-  const preset = matchPreset(p);
   const base = info.images.find((i) => i.role === "basecolor");
   const bmp = base ? await createImageBitmap(base.data).catch(() => null) : null;
   const atlas = bmp ? `${bmp.width} x ${bmp.height}` : p.atlas ? `${p.atlas} (requested)` : "default";
@@ -116,7 +114,6 @@ async function handoffNotes(
     row("Model:", "TRELLIS.2 (Microsoft), run locally with trellis.cpp"),
     row("Resolution:", `${p.resolution}${p.resolution > 512 ? " (cascade)" : ""}`),
     row("Seed:", String(p.seed)),
-    row("Preset:", preset ? preset.label : "Custom"),
     row("Faces:", `${info.faces.toLocaleString()} (target: ${p.faces ? formatFaces(p.faces) : "auto"})`),
     row("Atlas:", atlas),
     row("Textures:", webpTextures ? "WebP" : "PNG"),
@@ -142,7 +139,7 @@ async function handoffNotes(
       ? [
           "  - Textures are WebP and the GLB REQUIRES the EXT_texture_webp extension: tools",
           "    without it will refuse to open the GLB. The extracted texture files open in",
-          "    any image editor. Ask for a PNG export (Modeler handoff preset) if needed.",
+          "    any image editor. Ask for a PNG re-export if the GLB won't open.",
         ]
       : []),
     "",

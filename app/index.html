@@ -61,41 +61,26 @@
               <option value="box">box (faster)</option>
             </select>
           </label>
-          <!-- Output budget: pick a preset; Faces/Atlas sit under "Customize" for
-               fine-tuning (editing either switches the preset to Custom).
-               Texture format follows the preset (presets.ts, texturesFor). -->
-          <div class="output-group">
-            <label class="ctl">
-              <span>Output preset</span>
-              <select id="ctl-preset"></select>
-            </label>
-            <div id="preset-hint" class="preset-hint muted"></div>
-            <details class="customize">
-              <summary>Customize faces &amp; atlas</summary>
-              <div class="ctl-row">
-                <label class="ctl" title="Mesh decimation target. Lower = lighter file; the texture keeps the surface detail. auto = 300K (150K at res 512).">
-                  <span>Faces</span>
-                  <select id="ctl-faces">
-                    <option value="0" selected>auto</option>
-                    <option value="150000">150K</option>
-                    <option value="100000">100K</option>
-                    <option value="50000">50K</option>
-                    <option value="25000">25K</option>
-                    <option value="10000">10K</option>
-                  </select>
-                </label>
-                <label class="ctl" title="Texture size in px (square). auto = 2048 (1024 at res 512).">
-                  <span>Atlas</span>
-                  <select id="ctl-atlas">
-                    <option value="0" selected>auto</option>
-                    <option value="1024">1024</option>
-                    <option value="2048">2048</option>
-                    <option value="4096">4096</option>
-                  </select>
-                </label>
-              </div>
-            </details>
-          </div>
+          <label class="ctl" title="Mesh decimation target. Lower = lighter file; the texture keeps the surface detail.">
+            <span>Faces</span>
+            <select id="ctl-faces">
+              <option value="0" selected>auto (300K; 150K at 512)</option>
+              <option value="150000">150K</option>
+              <option value="100000">100K</option>
+              <option value="50000">50K</option>
+              <option value="25000">25K</option>
+              <option value="10000">10K</option>
+            </select>
+          </label>
+          <label class="ctl" title="Texture size in px (square). Larger = sharper texture, bigger file.">
+            <span>Atlas</span>
+            <select id="ctl-atlas">
+              <option value="0" selected>auto (2048; 1024 at 512)</option>
+              <option value="1024">1024</option>
+              <option value="2048">2048</option>
+              <option value="4096">4096</option>
+            </select>
+          </label>
           <label class="ctl">
             <span>Seed</span>
             <input id="ctl-seed" type="number" min="0" step="1" value="42" />

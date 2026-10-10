@@ -14,8 +14,7 @@
 // panel. Starting jobs, and deciding when to, stays in main.ts.
 
 import { newId } from "./store";
-import { matchPreset, tileLabel } from "./presets";
-import { formatFaces, type GenParams } from "./types";
+import { formatFaces, tileLabel, type GenParams } from "./types";
 
 /** One image waiting to be generated. */
 export interface QueueItem {
@@ -143,11 +142,9 @@ export class GenerationQueue {
   }
 }
 
-/** Human-readable summary, e.g. "Game prop · 1024 · seed 42 · 50K faces · 2048 px · PNG · auto bg · xatlas". */
+/** Human-readable summary, e.g. "1024 · seed 42 · 50K faces · 2048 px · PNG · auto bg · xatlas". */
 export function describeParams(p: GenParams): string {
-  const preset = matchPreset(p);
   return [
-    preset ? preset.label : "Custom",
     `${p.resolution}`,
     `seed ${p.seed}`,
     p.faces ? `${formatFaces(p.faces)} faces` : "auto faces",

@@ -24,7 +24,15 @@ export interface GenParams {
   textures?: TextureFormat;
 }
 
-/** Defaults equal the "Showcase" preset (presets.ts): the engine's own defaults. */
+/**
+ * Texture format Studio always requests. It only changes how the colors are
+ * stored in the GLB, not the model. The engine's default WebP (glTF extension
+ * EXT_texture_webp) is far smaller, but a GLB that requires it won't open at
+ * all in tools without that extension; PNG opens in every DCC tool and in
+ * Unreal, which is where Studio's output goes. Not a user control.
+ */
+export const TEXTURE_FORMAT: TextureFormat = "png";
+
 export const DEFAULT_PARAMS: GenParams = {
   resolution: 1024,
   seed: 42,
@@ -32,7 +40,7 @@ export const DEFAULT_PARAMS: GenParams = {
   uv: "xatlas",
   faces: 0,
   atlas: 0,
-  textures: "webp",
+  textures: TEXTURE_FORMAT,
 };
 
 /** Compact face count: 49812 -> "49.8K", 300000 -> "300K", 1250000 -> "1.25M". */
@@ -40,6 +48,17 @@ export function formatFaces(n: number): string {
   if (n >= 1e6) return `${+(n / 1e6).toFixed(2)}M`;
   if (n >= 1e3) return `${+(n / 1e3).toFixed(1)}K`;
   return String(n);
+}
+
+/**
+ * Label for a gallery/queue tile: the resolution, plus the face target and
+ * atlas when they're set, e.g. "1024", "1024 · 50K", "1024 · 50K · 4096".
+ */
+export function tileLabel(p: GenParams): string {
+  const parts = [`${p.resolution}`];
+  if (p.faces) parts.push(formatFaces(p.faces));
+  if (p.atlas) parts.push(String(p.atlas));
+  return parts.join(" · ");
 }
 
 /** Written by the installer, read by the Tauri shell + surfaced to the UI. */

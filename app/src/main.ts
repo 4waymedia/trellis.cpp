@@ -9,8 +9,7 @@ import { isTauri, listen, revealInOutput, saveBytes, saveToOutputDir, writeHando
 import { inspectGlb, type GlbInfo } from "./glb";
 import { buildHandoff } from "./handoff";
 import { Viewer } from "./viewer";
-import { DEFAULT_PRESET, PRESETS, getPreset, matchPreset, texturesFor, tileLabel, type PresetId } from "./presets";
-import { DEFAULT_PARAMS, formatFaces, type GenParams, type GenRecord } from "./types";
+import { DEFAULT_PARAMS, TEXTURE_FORMAT, formatFaces, tileLabel, type GenParams, type GenRecord } from "./types";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -65,24 +64,21 @@ const queue = new GenerationQueue(
 );
 
 // ---- controls -> params ----
-const presetSelect = $<HTMLSelectElement>("ctl-preset");
-const presetHint = $("preset-hint");
 const facesSelect = $<HTMLSelectElement>("ctl-faces");
 const atlasSelect = $<HTMLSelectElement>("ctl-atlas");
-const CUSTOM = "custom";
 
 function readParams(): GenParams {
   const res = parseInt(($("ctl-res") as HTMLSelectElement).value, 10);
   const seed = parseInt(($("ctl-seed") as HTMLInputElement).value, 10);
-  const params = {
+  return {
     resolution: (res === 512 || res === 1536 ? res : 1024) as GenParams["resolution"],
     seed: isNaN(seed) ? DEFAULT_PARAMS.seed : seed,
     bgRemoval: ($("ctl-bg") as HTMLSelectElement).value as GenParams["bgRemoval"],
     uv: ($("ctl-uv") as HTMLSelectElement).value as GenParams["uv"],
     faces: parseInt(facesSelect.value, 10) || 0,
     atlas: parseInt(atlasSelect.value, 10) || 0,
+    textures: TEXTURE_FORMAT,
   };
-  return { ...params, textures: texturesFor(params) }; // texture format follows the preset
 }
 
 /** Show `p` in the controls (gallery reload). Missing fields fall back to the server defaults. */
@@ -93,37 +89,8 @@ function applyParams(p: GenParams): void {
   ($("ctl-uv") as HTMLSelectElement).value = p.uv;
   facesSelect.value = String(p.faces ?? 0);
   atlasSelect.value = String(p.atlas ?? 0);
-  syncPresetFromControls();
 }
 
-// ---- output presets (presets.ts) ----
-/** Fill the preset dropdown: every preset, then Custom. */
-function populatePresets(): void {
-  presetSelect.innerHTML = "";
-  for (const p of PRESETS) presetSelect.add(new Option(p.label, p.id));
-  presetSelect.add(new Option("Custom", CUSTOM));
-}
-
-/** Choosing a preset writes its face target and atlas into the Customize selects. */
-function applyPresetToControls(id: PresetId): void {
-  const preset = getPreset(id);
-  facesSelect.value = String(preset.faces);
-  atlasSelect.value = String(preset.atlas);
-  syncPresetFromControls();
-}
-
-/** Point the preset dropdown at whatever the three selects now add up to (or Custom). */
-function syncPresetFromControls(): void {
-  const preset = matchPreset(readParams());
-  presetSelect.value = preset ? preset.id : CUSTOM;
-  presetHint.textContent = preset ? preset.hint : "Custom face/atlas budget (PNG textures).";
-}
-
-presetSelect.addEventListener("change", () => {
-  if (presetSelect.value !== CUSTOM) applyPresetToControls(presetSelect.value as PresetId);
-  else syncPresetFromControls(); // Custom is just a label; it never changes the values
-});
-[facesSelect, atlasSelect].forEach((el) => el.addEventListener("change", syncPresetFromControls));
 
 // ---- toasts ----
 function toast(msg: string, kind: "" | "ok" | "err" = ""): void {
@@ -455,8 +422,8 @@ exportBtn.addEventListener("click", async () => {
     toast(`Handoff exported (${pkg.files.length} files) to ${dir}`, "ok");
     if (pkg.webpTextures) {
       toast(
-        "This model has WebP textures, which some 3D tools can't open. For the modeler, " +
-          "regenerate it with the Modeler handoff preset (PNG).",
+        "This model has WebP textures, which some 3D tools can't open. It was generated " +
+          "before Studio switched to PNG; regenerate it for the modeler.",
         "err",
       );
     }
@@ -619,8 +586,6 @@ listen<string>("server-log", (line) => {
 
 // ---- boot ----
 async function boot(): Promise<void> {
-  populatePresets();
-  applyPresetToControls(DEFAULT_PRESET);
   setViewerTools(false);
   await refreshGallery();
   await pollHealth();
