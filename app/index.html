@@ -34,7 +34,7 @@
             <div>Drop an image here</div>
             <div class="muted">or click to browse</div>
           </div>
-          <input id="file-input" type="file" accept="image/*" hidden />
+          <input id="file-input" type="file" accept="image/*" multiple hidden />
         </div>
 
         <div class="controls">
@@ -74,6 +74,14 @@
           <div id="progress-stage" class="progress-stage muted">starting…</div>
           <div id="progress-elapsed" class="progress-elapsed muted">0:00</div>
           <button id="cancel-btn" class="link-btn">Cancel</button>
+        </div>
+
+        <div id="queue" class="queue hidden">
+          <div class="queue-head">
+            <span id="queue-label">Queued · 0</span>
+            <button id="clear-queue" class="link-btn">Clear</button>
+          </div>
+          <div id="queue-list" class="queue-list"></div>
         </div>
       </section>
 

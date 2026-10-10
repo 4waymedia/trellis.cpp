@@ -1,6 +1,8 @@
 import "./ui.css";
 import { generate, health } from "./api";
 import { loadConfig } from "./config";
+import { getPrefs } from "./prefs";
+import { GenerationQueue } from "./queue";
 import { renderSettings } from "./settings";
 import { all, clear as clearStore, del as removeRecord, get as getRecord, isEphemeral, newId, put } from "./store";
 import { isTauri, listen, saveBytes, saveToOutputDir } from "./tauri";
@@ -34,13 +36,27 @@ const viewer = new Viewer($("viewer-mount"));
 let inputImage: Blob | null = null;
 let inputName = "input.png";
 let currentGlb: Blob | null = null;
+let currentName = "model"; // input name of the result in the viewer (not of the running job)
 let activeId: string | null = null;
 let serverOnline = false;
 let generating = false;
+/** Settings of the job currently running; null when idle. */
+let runningParams: GenParams | null = null;
 let abort: AbortController | null = null;
 let elapsedTimer: number | null = null;
 let galleryUrls: string[] = [];
 let warnedEphemeral = false;
+
+/** Images waiting behind the running job (see queue.ts). */
+const queue = new GenerationQueue(
+  {
+    wrap: $("queue"),
+    label: $("queue-label"),
+    list: $("queue-list"),
+    clearBtn: $("clear-queue"),
+  },
+  () => updateGenerateEnabled(),
+);
 
 // ---- controls -> params ----
 function readParams(): GenParams {
@@ -85,29 +101,72 @@ dropzone.addEventListener("keydown", (e) => {
   if ((e as KeyboardEvent).key === "Enter") fileInput.click();
 });
 fileInput.addEventListener("change", () => {
-  const f = fileInput.files?.[0];
-  if (f) setInput(f, f.name);
+  acceptFiles([...(fileInput.files ?? [])]);
+  fileInput.value = ""; // let the same file be picked again
 });
+// HTML5 drag-and-drop. In Tauri this needs `dragDropEnabled: false` on the
+// window (tauri.conf.json): otherwise the webview's native file-drop handler
+// swallows the drop on Windows/WebView2 and the page never sees the files.
+
+// A file dropped anywhere outside the drop zone must not make the webview
+// navigate to it (which would replace the whole app with the image).
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => e.preventDefault());
+
+const IMAGE_EXT = /\.(png|jpe?g|webp|bmp|gif|tiff?)$/i;
+const isImage = (f: File) => f.type.startsWith("image/") || IMAGE_EXT.test(f.name);
+
+/**
+ * Single entry point for every new image (browse, drop, paste).
+ * Idle: the image becomes the input, ready for Generate.
+ * Generating: it joins the queue and runs after the current job.
+ */
+function acceptImage(image: Blob, name: string): void {
+  if (generating) enqueue(image, name);
+  else setInput(image, name);
+}
+
+/**
+ * Browse / drop entry point for one or more files. Non-images are skipped
+ * with a toast. With several images, only the first can become the input;
+ * the rest always queue behind it.
+ */
+function acceptFiles(files: File[]): void {
+  const images = files.filter(isImage);
+  const skipped = files.length - images.length;
+  if (skipped) {
+    toast(
+      skipped === 1 && files.length === 1
+        ? `"${files[0].name}" isn't an image — drop a PNG, JPEG or WebP.`
+        : `Skipped ${skipped} non-image file${skipped > 1 ? "s" : ""}.`,
+      "err",
+    );
+  }
+  // Only the first can become the input; the rest always queue (when idle they'd
+  // otherwise just replace each other in the preview).
+  images.forEach((f, i) => (i === 0 ? acceptImage(f, f.name) : enqueue(f, f.name)));
+}
+
 ["dragenter", "dragover"].forEach((ev) =>
   dropzone.addEventListener(ev, (e) => {
     e.preventDefault();
     dropzone.classList.add("drag");
   }),
 );
-["dragleave", "drop"].forEach((ev) =>
-  dropzone.addEventListener(ev, (e) => {
-    e.preventDefault();
-    dropzone.classList.remove("drag");
-  }),
-);
+// dragleave also fires when the pointer moves onto a child (the preview <img>),
+// which made the highlight flicker; only clear it when actually leaving the zone.
+dropzone.addEventListener("dragleave", (e) => {
+  if (!dropzone.contains((e as DragEvent).relatedTarget as Node | null)) dropzone.classList.remove("drag");
+});
 dropzone.addEventListener("drop", (e) => {
-  const f = (e as DragEvent).dataTransfer?.files?.[0];
-  if (f && f.type.startsWith("image/")) setInput(f, f.name);
+  e.preventDefault();
+  dropzone.classList.remove("drag");
+  acceptFiles([...((e as DragEvent).dataTransfer?.files ?? [])]);
 });
 window.addEventListener("paste", async (e: ClipboardEvent) => {
   for (const item of e.clipboardData?.items ?? []) {
     const image = item.type.startsWith("image/") && item.getAsFile();
-    if (image) return setInput(image, image.name || "pasted.png");
+    if (image) return acceptImage(image, image.name || "pasted.png");
   }
   // WebKitGTK can omit image data from ClipboardEvent. Since paste was
   // user-triggered, try reading the clipboard item list for an image.
@@ -116,10 +175,41 @@ window.addEventListener("paste", async (e: ClipboardEvent) => {
     const type = item.types.find((type) => type.startsWith("image/"));
     if (type) {
       const image = await item.getType(type).catch(() => null);
-      if (image) return setInput(image, "pasted.png");
+      if (image) return acceptImage(image, "pasted.png");
     }
   }
 });
+
+// ---- queue ----
+/**
+ * Queue an image. Its settings are fixed now, from one of two sources
+ * (Settings → "Queued images use the same settings…", prefs.ts):
+ *   - on, while a job runs: a copy of the running job's settings, so a batch
+ *     dropped onto a running generation all comes out the same;
+ *   - otherwise: whatever the settings panel shows right now.
+ */
+function enqueue(image: Blob, name: string): void {
+  const params = getPrefs().queueSameSettings && runningParams ? { ...runningParams } : readParams();
+  queue.add(image, name, params);
+}
+
+/**
+ * Start the next queued image, if any, with the settings it was queued with.
+ *
+ * Note: if the server is offline this pauses instead, keeping the queue
+ * intact. Otherwise every remaining item would fail instantly in turn and the
+ * whole batch would be lost to error toasts. Generate resumes it.
+ */
+function startNextQueued(): void {
+  if (generating || queue.size === 0) return;
+  if (!serverOnline) {
+    toast(`Server offline — queue paused (${queue.size} waiting). Press Generate to resume.`, "err");
+    return;
+  }
+  const next = queue.take()!;
+  setInput(next.image, next.name);
+  void doGenerate(next.params);
+}
 
 // ---- generate ----
 function fmtElapsed(ms: number): string {
@@ -128,13 +218,28 @@ function fmtElapsed(ms: number): string {
 }
 
 function updateGenerateEnabled(): void {
-  generateBtn.disabled = !(serverOnline && inputImage && !generating);
+  generateBtn.disabled = !(serverOnline && (inputImage || queue.size > 0) && !generating);
 }
 
-async function doGenerate(): Promise<void> {
-  if (!inputImage || generating) return;
-  const params = readParams();
+/**
+ * Generate a model from the current input, then hand off to the queue.
+ *
+ * @param params Settings for this run. Defaults to the settings panel (the
+ *               Generate button); queued jobs pass the settings they were
+ *               queued with.
+ *
+ * Note: the input image and name are captured at the start. Drops and pastes
+ * during the run go to the queue, but `inputImage` still changes when the
+ * queue advances, so the result must be saved under this job's own input.
+ */
+async function doGenerate(params: GenParams = readParams()): Promise<void> {
+  if (generating) return;
+  if (!inputImage) return startNextQueued(); // Generate with only a queue: start it
+  const image = inputImage;
+  const name = inputName;
   generating = true;
+  runningParams = params;
+  dropzone.classList.add("queueing");
   updateGenerateEnabled();
   progress.classList.remove("hidden");
   progressStage.textContent = "starting…";
@@ -145,15 +250,16 @@ async function doGenerate(): Promise<void> {
   }, 1000);
   abort = new AbortController();
   try {
-    const { glb } = await generate(inputImage, params, abort.signal);
+    const { glb } = await generate(image, params, abort.signal);
     currentGlb = glb;
+    currentName = name;
 
     const rec: GenRecord = {
       id: newId(),
       ts: Date.now(),
-      name: inputName,
+      name,
       params,
-      input: inputImage,
+      input: image,
       glb,
       thumb: null,
     };
@@ -166,7 +272,7 @@ async function doGenerate(): Promise<void> {
     if (isTauri()) {
       try {
         const bytes = new Uint8Array(await glb.arrayBuffer());
-        const base = inputName.replace(/\.[^.]+$/, "") || "model";
+        const base = name.replace(/\.[^.]+$/, "") || "model";
         const fname = `${base}_${params.resolution}_seed${params.seed}_${rec.id}.glb`;
         savedPath = await saveToOutputDir(fname, bytes);
       } catch (e) {
@@ -204,17 +310,23 @@ async function doGenerate(): Promise<void> {
       toast(`3D preview couldn't render (your result is still saved): ${(e as Error).message}`, "err");
     }
   } catch (e) {
-    if (abort?.signal.aborted) toast("Generation cancelled");
-    else toast((e as Error).message || "generation failed", "err");
+    if (abort?.signal.aborted) {
+      toast(queue.size ? `Generation cancelled — queue paused (${queue.size} waiting)` : "Generation cancelled");
+    } else toast(`${name}: ${(e as Error).message || "generation failed"}`, "err");
   } finally {
     generating = false;
+    runningParams = null;
+    dropzone.classList.remove("queueing");
     if (elapsedTimer) window.clearInterval(elapsedTimer);
     progress.classList.add("hidden");
     updateGenerateEnabled();
   }
+  // Success or failure, move on to the next queued image: one bad input
+  // shouldn't stall a batch. Cancel pauses instead, since the user asked to stop.
+  if (!abort?.signal.aborted) startNextQueued();
 }
 
-generateBtn.addEventListener("click", doGenerate);
+generateBtn.addEventListener("click", () => void doGenerate());
 cancelBtn.addEventListener("click", () => abort?.abort());
 
 // ---- viewer tools ----
@@ -226,7 +338,7 @@ resetViewBtn.addEventListener("click", () => viewer.resetView());
 saveGlbBtn.addEventListener("click", async () => {
   if (!currentGlb) return;
   const bytes = new Uint8Array(await currentGlb.arrayBuffer());
-  const base = inputName.replace(/\.[^.]+$/, "") || "model";
+  const base = currentName.replace(/\.[^.]+$/, "") || "model";
   const ok = await saveBytes(`${base}.glb`, bytes);
   if (ok) toast("Saved", "ok");
 });
@@ -241,13 +353,17 @@ async function loadRecord(id: string): Promise<void> {
     toast((e as Error).message, "err");
     return;
   }
-  inputImage = rec.input;
-  inputName = rec.name;
-  inputPreview.src = URL.createObjectURL(rec.input);
-  inputPreview.classList.remove("hidden");
-  dropHint.classList.add("hidden");
-  applyParams(rec.params);
+  // While a job runs, the dropzone shows that job's input; only the viewer changes.
+  if (!generating) {
+    inputImage = rec.input;
+    inputName = rec.name;
+    inputPreview.src = URL.createObjectURL(rec.input);
+    inputPreview.classList.remove("hidden");
+    dropHint.classList.add("hidden");
+    applyParams(rec.params);
+  }
   currentGlb = rec.glb;
+  currentName = rec.name;
   activeId = rec.id;
   setViewerTools(true);
   viewerCaption.textContent = `${rec.name} · ${rec.params.resolution} · seed ${rec.params.seed}`;

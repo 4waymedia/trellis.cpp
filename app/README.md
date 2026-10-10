@@ -15,9 +15,11 @@ src/            web UI (Vite + TypeScript, framework-free)
   api.ts        POST /generate, GET /health against trellis-server
   viewer.ts     <model-viewer> wrapper (vendored in public/vendor)
   store.ts      IndexedDB gallery (input + GLB + thumbnail blobs)
+  queue.ts      in-memory generation queue + its thumbnail strip (server runs one job at a time)
+  prefs.ts      UI preferences in localStorage (kept out of the installer's config.json)
   config.ts     resolves server host/port/models (Tauri command or localStorage)
   settings.ts   models dir / gpu / port panel
-  main.ts       wires the generate flow, gallery, status polling
+  main.ts       wires the generate flow, queue hand-off, gallery, status polling
 src-tauri/      Rust shell
   src/server.rs spawns & supervises trellis-server, forwards stdout as
                 `server-log` events, kills it on exit

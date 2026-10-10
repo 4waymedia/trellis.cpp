@@ -96,6 +96,19 @@ body {
 .dropzone-hint { text-align: center; color: var(--muted); pointer-events: none; }
 .dz-icon { font-size: 26px; margin-bottom: 6px; }
 .input-preview { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #0e1014; }
+/* While generating, a drop adds to the queue instead of replacing the input. */
+.dropzone.queueing.drag::after {
+  content: "Add to queue"; position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(20, 28, 46, 0.78); color: var(--text);
+  font-size: 15px; font-weight: 600; pointer-events: none;
+}
+
+/* ---- queue ---- */
+.queue { display: flex; flex-direction: column; gap: 6px; }
+.queue-head { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--muted); }
+.queue-list { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+.gitem.qitem { width: 56px; height: 56px; cursor: default; }
 
 /* ---- controls ---- */
 .controls { display: flex; flex-direction: column; gap: 10px; }
@@ -187,6 +200,13 @@ body {
 .dir-row { display: flex; gap: 6px; align-items: stretch; }
 .dir-row input { flex: 1 1 auto; min-width: 0; }
 .dir-row .tool-btn { flex: 0 0 auto; white-space: nowrap; }
+.modal-body .section-head {
+  margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border);
+  font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);
+}
+.check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; cursor: pointer; }
+.check input { margin-top: 2px; accent-color: var(--accent); }
+.check small { display: block; margin-top: 2px; font-size: 11px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .kv { font-size: 12px; color: var(--muted); }
 .kv b { color: var(--text); font-weight: 500; }
