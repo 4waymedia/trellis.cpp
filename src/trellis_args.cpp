@@ -35,6 +35,27 @@ bool parse_camera_arg(const std::string& name, const char* value, TrellisParams&
     return true;
 }
 
+bool parse_faces_arg(const char* value, TrellisParams& p, std::string& error) {
+    if (std::string(value) == "auto") { p.faces = -1; return true; }
+    char* end = nullptr;
+    errno = 0;
+    const long n = std::strtol(value, &end, 10);
+    if (end == value || *end || errno == ERANGE || n < kQemFacesMin || n > INT_MAX) {
+        error = "faces must be an integer >= " + std::to_string(kQemFacesMin) + " (or auto)";
+        return false;
+    }
+    p.faces = (int)n;
+    return true;
+}
+
+bool check_faces_compat(const TrellisParams& p, std::string& error) {
+    if (p.faces > 0 && p.decim >= 0) {
+        error = "faces sets the QEM decimation target and cannot be combined with --decim";
+        return false;
+    }
+    return true;
+}
+
 const char* model_family_name(ModelFamily f) {
     return f == ModelFamily::Pixal3D ? "pixal3d" : "trellis";
 }
@@ -108,8 +129,11 @@ void print_usage(const char* argv0, bool server) {
         "      --band N            narrow-band DC remesh band width (default: auto —\n"
         "                          res/512, i.e. 1 @512 / 2 @1024, which suppresses the\n"
         "                          res-1024 outer-skin speckle; N forces that width)\n"
-        "      --decim GRID        legacy cluster-grid decimation (default: quadric\n"
-        "                          simplify to 300K faces @1024 / 150K @512; 0 = none)\n"
+        "      --faces N           QEM decimation face target, >= 1000 (default 300K @1024\n"
+        "                          and @1536 / 150K @512). Lower = lighter asset, faster\n"
+        "                          UV unwrap; e.g. 50000 for a game prop\n"
+        "      --decim GRID        legacy cluster-grid decimation instead of QEM\n"
+        "                          (0 = keep the full-res mesh); not combinable with --faces\n"
         "      --atlas PX          UV atlas size (default 2048 @1024 / 1024 @512)\n"
         "      --tex-res N         texture PBR resolution 512/1024 (default: auto — drops\n"
         "                          a dense res-1024 decode to a clean res-512 PBR volume)\n"
@@ -204,6 +228,9 @@ bool parse_args(int argc, char** argv, TrellisParams& p) {
         else if (a == "--dump-post")            { const char* v = need(a.c_str()); if (!v) return false; p.dump_post = v; }
         else if (a == "--band")                 { const char* v = need(a.c_str()); if (!v) return false; p.band = atoi(v); }
         else if (a == "--decim")                { const char* v = need(a.c_str()); if (!v) return false; p.decim = atoi(v); }
+        else if (a == "--faces")                { const char* v = need(a.c_str()); if (!v) return false;
+                                                  std::string error;
+                                                  if (!parse_faces_arg(v, p, error)) { fprintf(stderr, "[trellis] %s\n", error.c_str()); return false; } }
         else if (a == "--atlas" || a == "--tex"){ const char* v = need(a.c_str()); if (!v) return false; p.tex = atoi(v); }
         else if (a == "--tex-res")              { const char* v = need(a.c_str()); if (!v) return false; p.tex_res = atoi(v); }
         else if (a == "--webp")                 { const char* v = need(a.c_str()); if (!v) return false;
@@ -245,6 +272,10 @@ bool parse_args(int argc, char** argv, TrellisParams& p) {
                      p.retopo_workdir.empty())) {
         fprintf(stderr,"[trellis] invalid retopo settings\n");
         return false;
+    }
+    {
+        std::string error;
+        if (!check_faces_compat(p, error)) { fprintf(stderr, "[trellis] %s\n", error.c_str()); return false; }
     }
     if (!p.retopo && p.retopo_no_weld_fill) {
         fprintf(stderr,"[trellis] --retopo-no-weld-fill requires --retopo\n");

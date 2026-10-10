@@ -160,7 +160,8 @@ Other useful CLI flags:
 | `--res 512\|1024\|1536` | geometry resolution (512 = light path, no cascade) |
 | `--bg-removal threshold\|birefnet` | default **auto**: pre-matted images keep their alpha, otherwise the BiRefNet matte (~13s on GPU). The plain white-bg keyer cuts specular highlights out of the alpha — the flow then generates holes there — so it is opt-in only |
 | `--no-texture` | geometry only |
-| `--decim GRID` | legacy cluster-grid decimation (default: quadric simplify to 300K faces @1024 / 150K @512; `0` = keep the full-res mesh) |
+| `--faces N` | QEM decimation face target, ≥ 1000 (default 300K @1024/1536, 150K @512). Lower gives lighter game/web assets and a faster UV unwrap; the baked texture keeps the surface detail |
+| `--decim GRID` | legacy cluster-grid decimation instead of QEM (`0` = keep the full-res mesh); not combinable with `--faces` |
 | `--atlas PX` | UV atlas size (default 2048 @1024 / 1024 @512) |
 | `--box-uv` | voxel-native 6-way box projection instead of the default xatlas unwrap (O(faces), faster, looser packing) |
 | `--seed N` | RNG seed |
@@ -214,7 +215,8 @@ available for test binaries and backwards-compatible automation.
 GET  /health     -> "ok"
 POST /generate      multipart/form-data with an "image" file part; optional text
                     fields "seed", "resolution" (512/1024/1536), "bg_removal"
-                    (threshold|birefnet). Returns model/gltf-binary.
+                    (threshold|birefnet), "faces" (QEM face target, >= 1000 or
+                    "auto"; 400 on an invalid value). Returns model/gltf-binary.
 ```
 
 Launch-time flags (including `--res`) set the per-request defaults; each request can
