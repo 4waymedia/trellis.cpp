@@ -18,6 +18,7 @@
 // tauri.ts (writeHandoffFolder), so the assembly stays testable in a browser.
 
 import { imageExt, inspectGlb, type GlbInfo } from "./glb";
+import { bgLabel, budgetOf, presetName } from "./options";
 import { formatFaces, type GenRecord } from "./types";
 import type { Viewer } from "./viewer";
 
@@ -114,10 +115,11 @@ async function handoffNotes(
     row("Model:", "TRELLIS.2 (Microsoft), run locally with trellis.cpp"),
     row("Resolution:", `${p.resolution}${p.resolution > 512 ? " (cascade)" : ""}`),
     row("Seed:", String(p.seed)),
-    row("Faces:", `${info.faces.toLocaleString()} (target: ${p.faces ? formatFaces(p.faces) : "auto"})`),
+    row("Preset:", presetName(p)),
+    row("Faces:", `${info.faces.toLocaleString()} (target: ${formatFaces(budgetOf(p).faces)})`),
     row("Atlas:", atlas),
     row("Textures:", webpTextures ? "WebP" : "PNG"),
-    row("Background:", p.bgRemoval),
+    row("Background:", `${bgLabel(p.bgRemoval)} (${p.bgRemoval})`),
     row("UV unwrap:", p.uv),
     "",
     "Files",

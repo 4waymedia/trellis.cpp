@@ -1,35 +1,53 @@
+// Trellis Studio UI: wires the page (index.html) to the server, the queue, the
+// viewer and the gallery. Layout follows the design handoff "Trellis Studio —
+// Queue, Output Presets & Viewer" (Phase 1: look & layout; the queue panel
+// still uses the stage-then-Generate flow, which Phase 2 replaces).
+
 import "./ui.css";
 import { generate, health } from "./api";
 import { loadConfig } from "./config";
+import { createSettingsEditor } from "./controls";
+import { inspectGlb, type GlbInfo } from "./glb";
+import { buildHandoff } from "./handoff";
+import { paramChips, tileLabel } from "./options";
 import { getPrefs } from "./prefs";
 import { GenerationQueue } from "./queue";
 import { renderSettings } from "./settings";
 import { all, clear as clearStore, del as removeRecord, get as getRecord, isEphemeral, newId, put } from "./store";
 import { isTauri, listen, revealInOutput, saveBytes, saveToOutputDir, writeHandoffFolder } from "./tauri";
-import { inspectGlb, type GlbInfo } from "./glb";
-import { buildHandoff } from "./handoff";
+import { DEFAULT_PARAMS, formatFaces, randomSeed, type GenParams, type GenRecord } from "./types";
 import { Viewer } from "./viewer";
-import { DEFAULT_PARAMS, TEXTURE_FORMAT, formatFaces, tileLabel, type GenParams, type GenRecord } from "./types";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
 // ---- element refs ----
 const dropzone = $("dropzone");
+const dropzoneTitle = $("dropzone-title");
 const fileInput = $<HTMLInputElement>("file-input");
 const inputPreview = $<HTMLImageElement>("input-preview");
 const dropHint = $("dropzone-hint");
 const generateBtn = $<HTMLButtonElement>("generate-btn");
+const queueCount = $("queue-count");
 const progress = $("progress");
+const progressThumb = $<HTMLImageElement>("progress-thumb");
+const progressName = $("progress-name");
+const progressChips = $("progress-chips");
 const progressStage = $("progress-stage");
 const progressElapsed = $("progress-elapsed");
 const cancelBtn = $<HTMLButtonElement>("cancel-btn");
+const viewerEmpty = $("viewer-empty");
+const viewerInfo = $("viewer-info");
+const viewerTag = $("viewer-tag");
+const viewerName = $("viewer-name");
+const viewerChips = $("viewer-chips");
+const viewerBottom = $("viewer-bottom");
+const viewerStats = $("viewer-stats");
+const shadeSeg = $("shade-seg");
 const resetViewBtn = $<HTMLButtonElement>("reset-view");
 const saveGlbBtn = $<HTMLButtonElement>("save-glb");
-const clayBtn = $<HTMLButtonElement>("clay-toggle");
-const wireBtn = $<HTMLButtonElement>("wire-toggle");
 const exportBtn = $<HTMLButtonElement>("export-handoff");
-const viewerCaption = $("viewer-caption");
 const galleryEl = $("gallery");
+const galleryCount = $("gallery-count");
 const clearGalleryBtn = $("clear-gallery");
 const backendBadge = $("backend-badge");
 const serverDot = $("server-dot");
@@ -44,12 +62,14 @@ let currentGlb: Blob | null = null;
 let currentName = "model"; // input name of the result in the viewer (not of the running job)
 let activeId: string | null = null;
 let serverOnline = false;
+let configured = false;
 let generating = false;
 /** Settings of the job currently running; null when idle. */
 let runningParams: GenParams | null = null;
 let abort: AbortController | null = null;
 let elapsedTimer: number | null = null;
 let galleryUrls: string[] = [];
+let progressThumbUrl: string | null = null;
 let warnedEphemeral = false;
 
 /** Images waiting behind the running job (see queue.ts). */
@@ -60,45 +80,55 @@ const queue = new GenerationQueue(
     list: $("queue-list"),
     clearBtn: $("clear-queue"),
   },
-  () => updateGenerateEnabled(),
+  () => refreshQueueUi(),
 );
 
-// ---- controls -> params ----
-const facesSelect = $<HTMLSelectElement>("ctl-faces");
-const atlasSelect = $<HTMLSelectElement>("ctl-atlas");
+// ---- settings editor (controls.ts) ----
+/** Settings for the next generation. New images start from the defaults with a random seed. */
+const editor = createSettingsEditor({ ...DEFAULT_PARAMS, seed: randomSeed() });
+$("settings-editor").append(editor.el);
 
-function readParams(): GenParams {
-  const res = parseInt(($("ctl-res") as HTMLSelectElement).value, 10);
-  const seed = parseInt(($("ctl-seed") as HTMLInputElement).value, 10);
-  return {
-    resolution: (res === 512 || res === 1536 ? res : 1024) as GenParams["resolution"],
-    seed: isNaN(seed) ? DEFAULT_PARAMS.seed : seed,
-    bgRemoval: ($("ctl-bg") as HTMLSelectElement).value as GenParams["bgRemoval"],
-    uv: ($("ctl-uv") as HTMLSelectElement).value as GenParams["uv"],
-    faces: parseInt(facesSelect.value, 10) || 0,
-    atlas: parseInt(atlasSelect.value, 10) || 0,
-    textures: TEXTURE_FORMAT,
-  };
-}
+const readParams = (): GenParams => editor.get();
 
-/** Show `p` in the controls (gallery reload). Missing fields fall back to the server defaults. */
-function applyParams(p: GenParams): void {
-  ($("ctl-res") as HTMLSelectElement).value = String(p.resolution);
-  ($("ctl-seed") as HTMLInputElement).value = String(p.seed);
-  ($("ctl-bg") as HTMLSelectElement).value = p.bgRemoval;
-  ($("ctl-uv") as HTMLSelectElement).value = p.uv;
-  facesSelect.value = String(p.faces ?? 0);
-  atlasSelect.value = String(p.atlas ?? 0);
-}
-
-
-// ---- toasts ----
+// ---- small helpers ----
 function toast(msg: string, kind: "" | "ok" | "err" = ""): void {
   const el = document.createElement("div");
   el.className = "toast" + (kind ? " " + kind : "");
   el.textContent = msg;
   $("toasts").appendChild(el);
   setTimeout(() => el.remove(), kind === "err" ? 8000 : 4000);
+}
+
+function fmtElapsed(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/** Fill a .chips container with one chip per setting. */
+function renderChips(container: HTMLElement, chips: string[]): void {
+  container.replaceChildren(
+    ...chips.map((c) => {
+      const span = document.createElement("span");
+      span.className = "chip";
+      span.textContent = c;
+      return span;
+    }),
+  );
+}
+
+// ---- queue panel state ----
+/** Count pill, drop zone title/size and the Generate button, from the current state. */
+function refreshQueueUi(): void {
+  const jobs = queue.size + (generating ? 1 : 0) + (!generating && inputImage ? 1 : 0);
+  queueCount.textContent = String(jobs);
+  const empty = jobs === 0;
+  dropzone.classList.toggle("empty", empty && !inputImage);
+  dropzoneTitle.textContent = empty ? "Drop an image to start" : "Drop images to add to queue";
+  updateGenerateEnabled();
+}
+
+function updateGenerateEnabled(): void {
+  generateBtn.disabled = !(serverOnline && (inputImage || queue.size > 0) && !generating);
 }
 
 // ---- input image ----
@@ -108,7 +138,8 @@ function setInput(blob: Blob, name: string): void {
   inputPreview.src = URL.createObjectURL(blob);
   inputPreview.classList.remove("hidden");
   dropHint.classList.add("hidden");
-  updateGenerateEnabled();
+  dropzone.classList.add("has-input");
+  refreshQueueUi();
 }
 
 dropzone.addEventListener("click", () => fileInput.click());
@@ -226,20 +257,31 @@ function startNextQueued(): void {
   void doGenerate(next.params);
 }
 
-// ---- viewer caption + server check ----
+// ---- viewer chrome ----
 /**
- * Caption under the viewer: settings, file size and the GLB's actual face
- * count, e.g. "knight.png · 1024 · seed 42 · 8.1 MB · 49.8K faces".
+ * Show a finished result's info around the viewer: status tag, name, chips
+ * and the stats pill with the values the GLB actually contains.
  *
- * @returns what the GLB contains (face count, embedded textures), or null if
- *          it couldn't be read; the caption then simply omits the face count.
+ * @returns what the GLB contains, or null if it couldn't be read.
  */
-async function showCaption(name: string | null, params: GenParams, glb: Blob): Promise<GlbInfo | null> {
-  const parts = [`${params.resolution}`, `seed ${params.seed}`, `${(glb.size / 1e6).toFixed(1)} MB`];
-  if (name) parts.unshift(name);
+async function showResultInfo(name: string, params: GenParams, glb: Blob, durationMs?: number): Promise<GlbInfo | null> {
+  viewerEmpty.classList.add("hidden");
+  viewerInfo.classList.remove("hidden");
+  viewerBottom.classList.remove("hidden");
+  viewerTag.classList.remove("live");
+  viewerTag.textContent = durationMs != null ? `Completed · ${fmtElapsed(durationMs)}` : "Completed";
+  viewerName.textContent = name;
+  renderChips(viewerChips, paramChips(params));
+
   const info = await inspectGlb(glb).catch(() => null);
-  if (info) parts.push(`${formatFaces(info.faces)} faces`);
-  viewerCaption.textContent = parts.join(" · ");
+  const base = info?.images.find((i) => i.role === "basecolor");
+  const bmp = base ? await createImageBitmap(base.data).catch(() => null) : null;
+  const stats = [`${params.resolution}`, `seed ${params.seed}`];
+  if (info) stats.push(`${formatFaces(info.faces)} faces`);
+  if (bmp) stats.push(`${bmp.width} px atlas`);
+  bmp?.close();
+  stats.push(`${(glb.size / 1e6).toFixed(1)} MB`);
+  viewerStats.textContent = stats.join(" · ");
   return info;
 }
 
@@ -279,13 +321,16 @@ async function checkServerHonored(params: GenParams, info: GlbInfo | null): Prom
 }
 
 // ---- generate ----
-function fmtElapsed(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-}
-
-function updateGenerateEnabled(): void {
-  generateBtn.disabled = !(serverOnline && (inputImage || queue.size > 0) && !generating);
+/** Show the running-job card for a job that's starting. */
+function showRunningCard(image: Blob, name: string, params: GenParams): void {
+  if (progressThumbUrl) URL.revokeObjectURL(progressThumbUrl);
+  progressThumbUrl = URL.createObjectURL(image);
+  progressThumb.src = progressThumbUrl;
+  progressName.textContent = name;
+  renderChips(progressChips, paramChips(params));
+  progressStage.textContent = "Starting…";
+  progressElapsed.textContent = "0:00";
+  progress.classList.remove("hidden");
 }
 
 /**
@@ -307,17 +352,27 @@ async function doGenerate(params: GenParams = readParams()): Promise<void> {
   generating = true;
   runningParams = params;
   dropzone.classList.add("queueing");
-  updateGenerateEnabled();
-  progress.classList.remove("hidden");
-  progressStage.textContent = "starting…";
+  showRunningCard(image, name, params);
+  // The staged image is now the running job: clear the drop zone for new images.
+  inputImage = null;
+  inputPreview.classList.add("hidden");
+  dropHint.classList.remove("hidden");
+  dropzone.classList.remove("has-input");
+  refreshQueueUi();
+  refreshStatus();
   const started = Date.now();
-  progressElapsed.textContent = "0:00";
   elapsedTimer = window.setInterval(() => {
     progressElapsed.textContent = fmtElapsed(Date.now() - started);
   }, 1000);
   abort = new AbortController();
   try {
     const { glb } = await generate(image, params, abort.signal);
+    const durationMs = Date.now() - started;
+    // The model is done; what's left (save, gallery, preview) is local. Freeze the
+    // card's timer at the real generation time instead of letting it run on.
+    if (elapsedTimer) window.clearInterval(elapsedTimer);
+    progressElapsed.textContent = fmtElapsed(durationMs);
+    progressStage.textContent = "Loading preview…";
     currentGlb = glb;
     currentName = name;
 
@@ -329,6 +384,7 @@ async function doGenerate(params: GenParams = readParams()): Promise<void> {
       input: image,
       glb,
       thumb: null,
+      durationMs,
     };
 
     // 1) Write the GLB to the output folder FIRST. This on-disk file is the real
@@ -346,7 +402,8 @@ async function doGenerate(params: GenParams = readParams()): Promise<void> {
         toast(`Auto-save to output folder failed: ${(e as Error).message}`, "err");
       }
     }
-    toast(savedPath ? `Saved to ${savedPath}` : "Generation complete", "ok");
+    const took = fmtElapsed(durationMs);
+    toast(savedPath ? `Done in ${took} — saved to ${savedPath}` : `Generation complete in ${took}`, "ok");
 
     // 2) Add it to the gallery. The store falls back to in-memory if IndexedDB
     // is unavailable, so this never throws and never blocks the save above.
@@ -361,7 +418,7 @@ async function doGenerate(params: GenParams = readParams()): Promise<void> {
     }
     activeId = rec.id;
     setViewerTools(true);
-    void checkServerHonored(params, await showCaption(null, params, glb));
+    void checkServerHonored(params, await showResultInfo(name, params, glb, durationMs));
     await refreshGallery();
 
     // 3) Best-effort 3D preview + gallery thumbnail — never blocks the save above.
@@ -386,7 +443,8 @@ async function doGenerate(params: GenParams = readParams()): Promise<void> {
     dropzone.classList.remove("queueing");
     if (elapsedTimer) window.clearInterval(elapsedTimer);
     progress.classList.add("hidden");
-    updateGenerateEnabled();
+    refreshQueueUi();
+    refreshStatus();
   }
   // Success or failure, move on to the next queued image: one bad input
   // shouldn't stall a batch. Cancel pauses instead, since the user asked to stop.
@@ -400,12 +458,37 @@ cancelBtn.addEventListener("click", () => abort?.abort());
 function setViewerTools(on: boolean): void {
   resetViewBtn.disabled = !on;
   saveGlbBtn.disabled = !on;
-  clayBtn.disabled = !on;
-  wireBtn.disabled = !on;
   // The handoff export writes a folder on disk, so it needs the desktop app.
   exportBtn.disabled = !on || !isTauri();
 }
 resetViewBtn.addEventListener("click", () => viewer.resetView());
+
+type Shade = "textured" | "clay" | "wireframe";
+
+/**
+ * Shading (Textured | Clay | Wireframe), one exclusive choice as in the design.
+ * Wireframe draws the triangles over clay, which reads best. It relies on
+ * model-viewer internals (viewer.ts), so if they're unavailable that option
+ * disables itself and the view falls back to clay.
+ */
+function setShade(shade: Shade): void {
+  viewer.setClay(shade !== "textured");
+  if (!viewer.setWireframe(shade === "wireframe") && shade === "wireframe") {
+    const wireOpt = shadeSeg.querySelector<HTMLButtonElement>('[data-shade="wireframe"]')!;
+    wireOpt.disabled = true;
+    wireOpt.title = "Wireframe isn't available with this version of the 3D viewer";
+    toast("Wireframe isn't available with this version of the 3D viewer.", "err");
+    shade = "clay";
+  }
+  shadeSeg.querySelectorAll<HTMLButtonElement>("[data-shade]").forEach((b) => {
+    const on = b.dataset.shade === shade;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-checked", String(on));
+  });
+}
+shadeSeg.querySelectorAll<HTMLButtonElement>("[data-shade]").forEach((b) =>
+  b.addEventListener("click", () => setShade(b.dataset.shade as Shade)),
+);
 
 /**
  * Export a modeler handoff package (handoff.ts) for the result in the viewer,
@@ -435,26 +518,6 @@ exportBtn.addEventListener("click", async () => {
   }
 });
 
-/**
- * Wireframe toggle: triangles over the surface (combines with Clay). Stays on
- * for the next model. Relies on model-viewer internals (viewer.ts), so if this
- * build doesn't expose them the button disables itself and says why.
- */
-wireBtn.addEventListener("click", () => {
-  if (!viewer.setWireframe(!viewer.isWireframe)) {
-    wireBtn.disabled = true;
-    wireBtn.title = "Wireframe isn't available with this version of the 3D viewer";
-    toast("Wireframe isn't available with this version of the 3D viewer.", "err");
-    return;
-  }
-  wireBtn.setAttribute("aria-pressed", String(viewer.isWireframe));
-});
-
-/** Clay toggle: untextured matte grey. Stays on for the next model until switched off. */
-clayBtn.addEventListener("click", () => {
-  viewer.setClay(!viewer.isClay);
-  clayBtn.setAttribute("aria-pressed", String(viewer.isClay));
-});
 saveGlbBtn.addEventListener("click", async () => {
   if (!currentGlb) return;
   const bytes = new Uint8Array(await currentGlb.arrayBuffer());
@@ -473,63 +536,70 @@ async function loadRecord(id: string): Promise<void> {
     toast((e as Error).message, "err");
     return;
   }
-  // While a job runs, the dropzone shows that job's input; only the viewer changes.
-  if (!generating) {
-    inputImage = rec.input;
-    inputName = rec.name;
-    inputPreview.src = URL.createObjectURL(rec.input);
-    inputPreview.classList.remove("hidden");
-    dropHint.classList.add("hidden");
-    applyParams(rec.params);
-  }
+  // Only the viewer changes: the "New images use" settings stay as they are.
   currentGlb = rec.glb;
   currentName = rec.name;
   activeId = rec.id;
   setViewerTools(true);
-  await showCaption(rec.name, rec.params, rec.glb);
-  updateGenerateEnabled();
+  await showResultInfo(rec.name, rec.params, rec.glb, rec.durationMs);
   await refreshGallery();
 }
 
+/** Rebuild the gallery strip: 128x88 tiles with "res · preset" and duration, name below. */
 async function refreshGallery(): Promise<void> {
   galleryUrls.forEach((u) => URL.revokeObjectURL(u));
   galleryUrls = [];
   const recs = await all();
+  galleryCount.textContent = String(recs.length);
   galleryEl.innerHTML = "";
   if (!recs.length) {
     galleryEl.innerHTML = `<div class="gallery-empty">No generations yet.</div>`;
     return;
   }
   for (const r of recs) {
-    const item = document.createElement("div");
-    item.className = "gitem" + (r.id === activeId ? " active" : "");
-    item.title = `${r.name} · ${new Date(r.ts).toLocaleString()}`;
+    const tile = document.createElement("div");
+    tile.className = "gtile" + (r.id === activeId ? " active" : "");
+    tile.title = `${r.name} · ${new Date(r.ts).toLocaleString()}`;
 
+    const frame = document.createElement("div");
+    frame.className = "gtile-img";
     const img = document.createElement("img");
-    const src = r.thumb ?? r.input;
-    const url = URL.createObjectURL(src);
+    const url = URL.createObjectURL(r.thumb ?? r.input);
     galleryUrls.push(url);
     img.src = url;
-    item.appendChild(img);
+    img.alt = r.name;
+    frame.appendChild(img);
 
-    const meta = document.createElement("div");
-    meta.className = "gmeta";
-    meta.textContent = tileLabel(r.params);
-    item.appendChild(meta);
+    const left = document.createElement("span");
+    left.className = "gtile-tag left";
+    left.textContent = tileLabel(r.params);
+    frame.appendChild(left);
+    if (r.durationMs != null) {
+      const right = document.createElement("span");
+      right.className = "gtile-tag right";
+      right.textContent = fmtElapsed(r.durationMs);
+      frame.appendChild(right);
+    }
 
     const delBtn = document.createElement("button");
     delBtn.className = "gdel";
     delBtn.textContent = "✕";
+    delBtn.title = "Delete from gallery";
     delBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
       await removeRecord(r.id);
       if (activeId === r.id) activeId = null;
       await refreshGallery();
     });
-    item.appendChild(delBtn);
+    frame.appendChild(delBtn);
 
-    item.addEventListener("click", () => loadRecord(r.id));
-    galleryEl.appendChild(item);
+    const nameEl = document.createElement("span");
+    nameEl.className = "gtile-name";
+    nameEl.textContent = r.name;
+
+    tile.append(frame, nameEl);
+    tile.addEventListener("click", () => loadRecord(r.id));
+    galleryEl.appendChild(tile);
   }
 }
 
@@ -558,27 +628,38 @@ modal.addEventListener("click", (e) => {
 });
 
 // ---- server status ----
+/** Header status: dot + "ready" / "generating" / "offline" / "setup needed". */
+function refreshStatus(): void {
+  const state = generating ? "busy" : serverOnline ? "ok" : "err";
+  serverDot.className = `status-dot ${state}`;
+  serverLabel.textContent = generating
+    ? "generating"
+    : serverOnline
+      ? "ready"
+      : configured
+        ? "offline"
+        : "setup needed";
+}
+
 async function pollHealth(): Promise<void> {
   const cfg = await loadConfig(true);
-  backendBadge.textContent = cfg.backend !== "unknown" ? cfg.backend : "—";
-  const ok = await health();
-  serverOnline = ok;
-  serverDot.className = "dot " + (ok ? "ok" : "err");
-  serverLabel.textContent = ok ? "ready" : cfg.configured ? "offline" : "setup needed";
-  const needSetup = !ok && !cfg.configured;
-  setupBanner.classList.toggle("hidden", !needSetup);
+  configured = cfg.configured;
+  if (isTauri()) backendBadge.textContent = cfg.backend !== "unknown" ? cfg.backend.toUpperCase() : "—";
+  serverOnline = await health();
+  refreshStatus();
+  const needSetup = !serverOnline && !cfg.configured;
+  setupBanner.classList.toggle("hidden", serverOnline);
   if (needSetup) {
     (setupBanner.querySelector("span") as HTMLElement).textContent =
       "Trellis Studio isn't set up yet — run the installer or point it at your models directory.";
-  } else if (!ok && cfg.configured) {
-    setupBanner.classList.remove("hidden");
+  } else if (!serverOnline) {
     (setupBanner.querySelector("span") as HTMLElement).textContent =
       "Server is offline — it may still be loading, or check the models directory in settings.";
   }
   updateGenerateEnabled();
 }
 
-// ---- server log -> progress (Tauri only) ----
+// ---- server log -> running card (Tauri only; Phase 2 maps these to named stages) ----
 listen<string>("server-log", (line) => {
   const t = String(line).trim();
   if (generating && t) progressStage.textContent = t;
@@ -587,12 +668,10 @@ listen<string>("server-log", (line) => {
 // ---- boot ----
 async function boot(): Promise<void> {
   setViewerTools(false);
+  refreshQueueUi();
   await refreshGallery();
   await pollHealth();
   window.setInterval(pollHealth, 4000);
-  if (!isTauri()) {
-    // Browser mode: no shell to report a backend.
-    backendBadge.textContent = "browser";
-  }
+  if (!isTauri()) backendBadge.textContent = "BROWSER"; // no shell to report a backend
 }
 boot();

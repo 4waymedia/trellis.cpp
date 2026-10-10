@@ -13,12 +13,12 @@ export interface GenParams {
   bgRemoval: BgRemoval;
   uv: Uv;
   /**
-   * QEM decimation face target (server field `faces`, CLI `--faces`).
-   * 0 or absent = the server's default: 300K at 1024/1536, 150K at 512.
-   * Optional because gallery records saved before this field existed lack it.
+   * QEM decimation face target (server field `faces`, CLI `--faces`). Studio
+   * always sets it (options.ts presets). 0 or absent = the server's default
+   * (300K at 1024/1536, 150K at 512): only gallery records from older builds.
    */
   faces?: number;
-  /** UV atlas size in px (server field `atlas`, CLI `--atlas`). 0 or absent = default (2048, 1024 at res 512). */
+  /** UV atlas size in px (server field `atlas`, CLI `--atlas`). 0 or absent = server default, as for faces. */
   atlas?: number;
   /** Texture encoding (server field `webp=off` for PNG). Absent = WebP, the server default. */
   textures?: TextureFormat;
@@ -33,32 +33,27 @@ export interface GenParams {
  */
 export const TEXTURE_FORMAT: TextureFormat = "png";
 
+/** Starting settings for new images: the "Game" preset (options.ts) at res 1024. */
 export const DEFAULT_PARAMS: GenParams = {
   resolution: 1024,
   seed: 42,
   bgRemoval: "auto",
   uv: "xatlas",
-  faces: 0,
-  atlas: 0,
+  faces: 50_000,
+  atlas: 2048,
   textures: TEXTURE_FORMAT,
 };
+
+/** A random seed in the range the server accepts (uint32), for "new images get a random seed". */
+export function randomSeed(): number {
+  return Math.floor(Math.random() * 2 ** 31);
+}
 
 /** Compact face count: 49812 -> "49.8K", 300000 -> "300K", 1250000 -> "1.25M". */
 export function formatFaces(n: number): string {
   if (n >= 1e6) return `${+(n / 1e6).toFixed(2)}M`;
   if (n >= 1e3) return `${+(n / 1e3).toFixed(1)}K`;
   return String(n);
-}
-
-/**
- * Label for a gallery/queue tile: the resolution, plus the face target and
- * atlas when they're set, e.g. "1024", "1024 · 50K", "1024 · 50K · 4096".
- */
-export function tileLabel(p: GenParams): string {
-  const parts = [`${p.resolution}`];
-  if (p.faces) parts.push(formatFaces(p.faces));
-  if (p.atlas) parts.push(String(p.atlas));
-  return parts.join(" · ");
 }
 
 /** Written by the installer, read by the Tauri shell + surfaced to the UI. */
@@ -84,4 +79,6 @@ export interface GenRecord {
   input: Blob; // source image
   glb: Blob; // resulting model/gltf-binary
   thumb: Blob | null; // model-viewer snapshot for the gallery
+  /** Wall-clock generation time (request sent -> GLB received); absent on older records. */
+  durationMs?: number;
 }

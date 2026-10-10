@@ -14,7 +14,8 @@
 // panel. Starting jobs, and deciding when to, stays in main.ts.
 
 import { newId } from "./store";
-import { formatFaces, tileLabel, type GenParams } from "./types";
+import { paramChips, tileLabel } from "./options";
+import type { GenParams } from "./types";
 
 /** One image waiting to be generated. */
 export interface QueueItem {
@@ -142,15 +143,7 @@ export class GenerationQueue {
   }
 }
 
-/** Human-readable summary, e.g. "1024 · seed 42 · 50K faces · 2048 px · PNG · auto bg · xatlas". */
+/** Human-readable summary of every setting: "1024 · bg auto · xatlas · Game 50K/2048 · seed 42". */
 export function describeParams(p: GenParams): string {
-  return [
-    `${p.resolution}`,
-    `seed ${p.seed}`,
-    p.faces ? `${formatFaces(p.faces)} faces` : "auto faces",
-    p.atlas ? `${p.atlas} px` : "auto atlas",
-    (p.textures ?? "webp").toUpperCase(),
-    `${p.bgRemoval} bg`,
-    p.uv,
-  ].join(" · ");
+  return paramChips(p).join(" · ");
 }
