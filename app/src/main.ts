@@ -88,21 +88,36 @@ fileInput.addEventListener("change", () => {
   const f = fileInput.files?.[0];
   if (f) setInput(f, f.name);
 });
+// HTML5 drag-and-drop. In Tauri this needs `dragDropEnabled: false` on the
+// window (tauri.conf.json): otherwise the webview's native file-drop handler
+// swallows the drop on Windows/WebView2 and the page never sees the files.
+
+// A file dropped anywhere outside the drop zone must not make the webview
+// navigate to it (which would replace the whole app with the image).
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => e.preventDefault());
+
+const IMAGE_EXT = /\.(png|jpe?g|webp|bmp|gif|tiff?)$/i;
+const isImage = (f: File) => f.type.startsWith("image/") || IMAGE_EXT.test(f.name);
+
 ["dragenter", "dragover"].forEach((ev) =>
   dropzone.addEventListener(ev, (e) => {
     e.preventDefault();
     dropzone.classList.add("drag");
   }),
 );
-["dragleave", "drop"].forEach((ev) =>
-  dropzone.addEventListener(ev, (e) => {
-    e.preventDefault();
-    dropzone.classList.remove("drag");
-  }),
-);
+// dragleave also fires when the pointer moves onto a child (the preview <img>),
+// which made the highlight flicker; only clear it when actually leaving the zone.
+dropzone.addEventListener("dragleave", (e) => {
+  if (!dropzone.contains((e as DragEvent).relatedTarget as Node | null)) dropzone.classList.remove("drag");
+});
 dropzone.addEventListener("drop", (e) => {
+  e.preventDefault();
+  dropzone.classList.remove("drag");
   const f = (e as DragEvent).dataTransfer?.files?.[0];
-  if (f && f.type.startsWith("image/")) setInput(f, f.name);
+  if (!f) return;
+  if (isImage(f)) setInput(f, f.name);
+  else toast(`"${f.name}" isn't an image — drop a PNG, JPEG or WebP.`, "err");
 });
 window.addEventListener("paste", async (e: ClipboardEvent) => {
   for (const item of e.clipboardData?.items ?? []) {
