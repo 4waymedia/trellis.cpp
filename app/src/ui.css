@@ -106,6 +106,11 @@ button { font-family: inherit; color: inherit; }
   min-height: 640px;
   display: grid;
   grid-template-rows: 52px auto minmax(0, 1fr) auto;   /* header / banner / main / gallery */
+  /* One column that can never grow past the window. Without this the implicit
+     column is sized to the widest child's min-content, and a full gallery strip
+     (one long row of tiles) widened the whole app, pushing the viewer's right
+     side off-screen. */
+  grid-template-columns: minmax(0, 1fr);
   background: var(--bg-page);
 }
 /* Pin each section to its row: the banner is display:none most of the time, and
@@ -114,6 +119,7 @@ button { font-family: inherit; color: inherit; }
 .app > .banner { grid-row: 2; }
 .app > .workspace { grid-row: 3; }
 .app > .gallery-wrap { grid-row: 4; }
+.app > * { min-width: 0; }
 
 /* ===================== Header ===================== */
 .topbar {
@@ -374,26 +380,36 @@ button { font-family: inherit; color: inherit; }
 .viewer-empty-sub { font-size: 13px; color: var(--text-muted); }
 
 .viewer-info {
-  position: absolute; top: 16px; left: 16px; right: 320px; min-width: 0;
-  display: flex; flex-direction: column; gap: 6px; pointer-events: none;
+  position: absolute; top: 16px; left: 16px; right: 16px; min-width: 0;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; pointer-events: none;
 }
 .viewer-tag { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ok); white-space: nowrap; }
 .viewer-tag.live { color: var(--accent-light); }
 .viewer-name { font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.viewer-toolbar { position: absolute; top: 16px; right: 16px; display: flex; align-items: center; gap: 8px; }
+/* (i) button: toggles the model details card (main.ts setInfoOpen). */
+.info-btn {
+  pointer-events: auto; width: 32px; height: 32px; padding: 0; border-radius: 50%; cursor: pointer;
+  display: grid; place-items: center;
+  background: var(--bg-glass); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--line-3); color: var(--text-3);
+  transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+}
+.info-btn:hover { background: rgba(30, 33, 40, 0.9); color: #fff; }
+.info-btn[aria-expanded="true"] { color: var(--accent-light); border-color: var(--accent); }
+.info-panel {
+  pointer-events: auto; user-select: text; max-width: min(100%, 520px); min-width: 0;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 12px 14px; border-radius: var(--r-card);
+}
+.viewer-stats { font-family: var(--mono); font-size: 11px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.viewer-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .viewer-bottom {
   position: absolute; left: 16px; right: 16px; bottom: 16px;
   display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
   pointer-events: none;
 }
 .viewer-bottom > * { pointer-events: auto; }
-.stats-pill {
-  font-family: var(--mono); font-size: 11px; color: var(--text-secondary); white-space: nowrap;
-  padding: 6px 10px; border-radius: var(--r-btn);
-  background: var(--bg-glass); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-}
-.viewer-actions { display: flex; gap: 8px; }
+.viewer-actions { display: flex; gap: 8px; margin-left: auto; }
 
 /* ===================== Gallery ===================== */
 .gallery-wrap {

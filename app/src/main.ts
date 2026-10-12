@@ -40,8 +40,9 @@ const viewerInfo = $("viewer-info");
 const viewerTag = $("viewer-tag");
 const viewerName = $("viewer-name");
 const viewerChips = $("viewer-chips");
-const viewerBottom = $("viewer-bottom");
 const viewerStats = $("viewer-stats");
+const infoBtn = $<HTMLButtonElement>("info-btn");
+const infoPanel = $("info-panel");
 const shadeSeg = $("shade-seg");
 const resetViewBtn = $<HTMLButtonElement>("reset-view");
 const saveGlbBtn = $<HTMLButtonElement>("save-glb");
@@ -259,6 +260,21 @@ function startNextQueued(): void {
 
 // ---- viewer chrome ----
 /**
+ * Open or close the model details card behind the (i) button. It starts
+ * closed so the model has the whole viewer, and stays as the user left it
+ * when another model loads.
+ */
+function setInfoOpen(open: boolean): void {
+  infoPanel.classList.toggle("hidden", !open);
+  infoBtn.setAttribute("aria-expanded", String(open));
+  infoBtn.title = open ? "Hide model details" : "Model details";
+}
+infoBtn.addEventListener("click", () => setInfoOpen(infoPanel.classList.contains("hidden")));
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !infoPanel.classList.contains("hidden")) setInfoOpen(false);
+});
+
+/**
  * Show a finished result's info around the viewer: status tag, name, chips
  * and the stats pill with the values the GLB actually contains.
  *
@@ -267,7 +283,6 @@ function startNextQueued(): void {
 async function showResultInfo(name: string, params: GenParams, glb: Blob, durationMs?: number): Promise<GlbInfo | null> {
   viewerEmpty.classList.add("hidden");
   viewerInfo.classList.remove("hidden");
-  viewerBottom.classList.remove("hidden");
   viewerTag.classList.remove("live");
   viewerTag.textContent = durationMs != null ? `Completed · ${fmtElapsed(durationMs)}` : "Completed";
   viewerName.textContent = name;

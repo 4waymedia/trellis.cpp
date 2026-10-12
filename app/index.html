@@ -110,25 +110,37 @@
             <span class="viewer-empty-sub">Drop an image into the queue to generate a model.</span>
           </div>
 
+          <!-- Model details: an (i) button; clicking it opens the info card below it. -->
           <div id="viewer-info" class="viewer-info hidden">
-            <span id="viewer-tag" class="viewer-tag"></span>
-            <span id="viewer-name" class="viewer-name"></span>
-            <div id="viewer-chips" class="chips glass-chips"></div>
-          </div>
-
-          <div class="viewer-toolbar">
-            <div id="shade-seg" class="seg glass" role="radiogroup" aria-label="Shading">
-              <button data-shade="textured" class="seg-opt on" role="radio" aria-checked="true">Textured</button>
-              <button data-shade="clay" class="seg-opt" role="radio" aria-checked="false"
-                title="Untextured matte grey: the form without the paint">Clay</button>
-              <button data-shade="wireframe" class="seg-opt" role="radio" aria-checked="false"
-                title="Triangles over clay: the face density">Wireframe</button>
+            <button id="info-btn" class="info-btn" type="button" aria-expanded="false" aria-controls="info-panel"
+              title="Model details" aria-label="Model details">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="9.5" stroke="currentColor" stroke-width="1.6"></circle>
+                <circle cx="12" cy="7.6" r="1.25" fill="currentColor"></circle>
+                <path d="M12 11v6.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+              </svg>
+            </button>
+            <div id="info-panel" class="info-panel glass hidden">
+              <span id="viewer-tag" class="viewer-tag"></span>
+              <span id="viewer-name" class="viewer-name"></span>
+              <div id="viewer-chips" class="chips glass-chips"></div>
+              <span id="viewer-stats" class="viewer-stats"></span>
             </div>
-            <button id="reset-view" class="glass-btn" disabled>Reset view</button>
           </div>
 
-          <div id="viewer-bottom" class="viewer-bottom hidden">
-            <span id="viewer-stats" class="stats-pill"></span>
+          <!-- Bottom bar: view tools on the left, export on the right. Always shown;
+               the buttons stay disabled until a model is loaded. -->
+          <div class="viewer-bottom">
+            <div class="viewer-toolbar">
+              <div id="shade-seg" class="seg glass" role="radiogroup" aria-label="Shading">
+                <button data-shade="textured" class="seg-opt on" role="radio" aria-checked="true">Textured</button>
+                <button data-shade="clay" class="seg-opt" role="radio" aria-checked="false"
+                  title="Untextured matte grey: the form without the paint">Clay</button>
+                <button data-shade="wireframe" class="seg-opt" role="radio" aria-checked="false"
+                  title="Triangles over clay: the face density">Wireframe</button>
+              </div>
+              <button id="reset-view" class="glass-btn" disabled>Reset view</button>
+            </div>
             <div class="viewer-actions">
               <button id="export-handoff" class="glass-btn" disabled
                 title="Write a folder for a 3D modeler: GLB, source image, textures, turnaround sheets and notes">Export handoff</button>
