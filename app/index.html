@@ -60,8 +60,13 @@
                   <div id="progress-chips" class="chips"></div>
                 </div>
               </div>
-              <div class="bar"><div class="bar-fill indeterminate"></div></div>
-              <div id="progress-stage" class="job-stage">starting…</div>
+              <div class="bar"><div id="progress-bar" class="bar-fill indeterminate"></div></div>
+              <!-- Stage + percent from the server log (stages.ts). Clicking it shows the raw log line. -->
+              <div id="progress-stage-row" class="job-stage-row">
+                <span id="progress-stage" class="job-stage">Starting…</span>
+                <span id="progress-pct" class="mono job-pct"></span>
+              </div>
+              <div id="progress-log" class="job-log mono hidden"></div>
               <div class="job-actions">
                 <button id="cancel-btn" class="ghost-btn danger">Cancel</button>
               </div>

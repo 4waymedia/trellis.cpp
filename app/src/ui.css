@@ -217,11 +217,23 @@ button { font-family: inherit; color: inherit; }
 }
 .pulse-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-light); animation: pulse 1.4s ease-in-out infinite; }
 .job-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.job-stage { font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.job-stage-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
+.job-stage-row.has-log { cursor: pointer; }
+.job-stage-row.has-log:hover .job-stage { color: var(--text); }
+.job-stage { font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.job-pct { font-size: 11px; color: var(--text-secondary); flex: none; }
+.job-log {
+  font-size: 10.5px; color: var(--text-muted); background: rgba(0, 0, 0, 0.25);
+  padding: 6px 8px; border-radius: 6px; white-space: pre; overflow: hidden; text-overflow: ellipsis;
+  font-variant-ligatures: none; /* Geist Mono would join the log's ### and ... runs */
+}
 .job-actions { display: flex; justify-content: flex-end; }
 
 .bar { height: 4px; border-radius: 4px; background: rgba(255, 255, 255, 0.07); overflow: hidden; }
-.bar-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent-start), var(--accent-light)); }
+.bar-fill {
+  height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent-start), var(--accent-light));
+  transition: width 600ms ease-out;
+}
 .bar-fill.indeterminate { width: 35%; animation: indeterminate 1.3s ease-in-out infinite; }
 
 /* queued thumbnails (queue.ts; Phase 2 replaces them with collapsible cards) */

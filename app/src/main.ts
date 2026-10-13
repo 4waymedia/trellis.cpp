@@ -1,7 +1,7 @@
 // Trellis Studio UI: wires the page (index.html) to the server, the queue, the
 // viewer and the gallery. Layout follows the design handoff "Trellis Studio —
-// Queue, Output Presets & Viewer" (Phase 1: look & layout; the queue panel
-// still uses the stage-then-Generate flow, which Phase 2 replaces).
+// Queue, Output Presets & Viewer". The queue keeps the stage-then-Generate
+// flow: the first image waits for Generate, later drops queue behind it.
 
 import "./ui.css";
 import { generate, health } from "./api";
@@ -13,6 +13,7 @@ import { paramChips, tileLabel } from "./options";
 import { getPrefs } from "./prefs";
 import { GenerationQueue } from "./queue";
 import { renderSettings } from "./settings";
+import { StageTracker } from "./stages";
 import { all, clear as clearStore, del as removeRecord, get as getRecord, isEphemeral, newId, put } from "./store";
 import { isTauri, listen, revealInOutput, saveBytes, saveToOutputDir, writeHandoffFolder } from "./tauri";
 import { DEFAULT_PARAMS, formatFaces, randomSeed, type GenParams, type GenRecord } from "./types";
@@ -33,6 +34,10 @@ const progressThumb = $<HTMLImageElement>("progress-thumb");
 const progressName = $("progress-name");
 const progressChips = $("progress-chips");
 const progressStage = $("progress-stage");
+const progressStageRow = $("progress-stage-row");
+const progressPct = $("progress-pct");
+const progressBar = $("progress-bar");
+const progressLog = $("progress-log");
 const progressElapsed = $("progress-elapsed");
 const cancelBtn = $<HTMLButtonElement>("cancel-btn");
 const viewerEmpty = $("viewer-empty");
@@ -71,6 +76,8 @@ let abort: AbortController | null = null;
 let elapsedTimer: number | null = null;
 let galleryUrls: string[] = [];
 let progressThumbUrl: string | null = null;
+/** Stage + percent of the running job, from the server log (stages.ts); null when idle. */
+let tracker: StageTracker | null = null;
 let warnedEphemeral = false;
 
 /** Images waiting behind the running job (see queue.ts). */
@@ -344,8 +351,36 @@ function showRunningCard(image: Blob, name: string, params: GenParams): void {
   progressName.textContent = name;
   renderChips(progressChips, paramChips(params));
   progressStage.textContent = "Starting…";
+  progressPct.textContent = "";
+  progressBar.classList.add("indeterminate");
+  progressBar.style.width = "";
+  progressLog.textContent = "";
   progressElapsed.textContent = "0:00";
   progress.classList.remove("hidden");
+}
+
+/**
+ * Show the tracker's stage and percent: "Shape latent · 4 of 8", "37%".
+ * Before the first stage header (and always in a plain browser, which gets no
+ * server log) the bar stays indeterminate.
+ */
+function renderStage(): void {
+  const p = tracker?.progress();
+  if (!p) return;
+  progressStage.textContent = `${p.name} · ${p.index + 1} of ${p.total}`;
+  progressPct.textContent = `${p.percent}%`;
+  progressBar.classList.remove("indeterminate");
+  progressBar.style.width = `${p.percent}%`;
+}
+
+/** The raw server log line under the stage, hidden by default; click the stage row to toggle. */
+if (isTauri()) {
+  progressStageRow.classList.add("has-log");
+  progressStageRow.title = "Show the server log line";
+  progressStageRow.addEventListener("click", () => {
+    const show = progressLog.classList.toggle("hidden") === false;
+    progressStageRow.title = show ? "Hide the server log line" : "Show the server log line";
+  });
 }
 
 /**
@@ -367,6 +402,7 @@ async function doGenerate(params: GenParams = readParams()): Promise<void> {
   generating = true;
   runningParams = params;
   dropzone.classList.add("queueing");
+  tracker = new StageTracker(params.resolution);
   showRunningCard(image, name, params);
   // The staged image is now the running job: clear the drop zone for new images.
   inputImage = null;
@@ -378,6 +414,7 @@ async function doGenerate(params: GenParams = readParams()): Promise<void> {
   const started = Date.now();
   elapsedTimer = window.setInterval(() => {
     progressElapsed.textContent = fmtElapsed(Date.now() - started);
+    renderStage(); // time-based stages advance between log lines
   }, 1000);
   abort = new AbortController();
   try {
@@ -387,7 +424,11 @@ async function doGenerate(params: GenParams = readParams()): Promise<void> {
     // card's timer at the real generation time instead of letting it run on.
     if (elapsedTimer) window.clearInterval(elapsedTimer);
     progressElapsed.textContent = fmtElapsed(durationMs);
+    tracker?.finish();
     progressStage.textContent = "Loading preview…";
+    progressPct.textContent = "100%";
+    progressBar.classList.remove("indeterminate");
+    progressBar.style.width = "100%";
     currentGlb = glb;
     currentName = name;
 
@@ -455,6 +496,7 @@ async function doGenerate(params: GenParams = readParams()): Promise<void> {
   } finally {
     generating = false;
     runningParams = null;
+    tracker = null;
     dropzone.classList.remove("queueing");
     if (elapsedTimer) window.clearInterval(elapsedTimer);
     progress.classList.add("hidden");
@@ -674,10 +716,12 @@ async function pollHealth(): Promise<void> {
   updateGenerateEnabled();
 }
 
-// ---- server log -> running card (Tauri only; Phase 2 maps these to named stages) ----
+// ---- server log -> running card (Tauri only) ----
 listen<string>("server-log", (line) => {
   const t = String(line).trim();
-  if (generating && t) progressStage.textContent = t;
+  if (!generating || !t) return;
+  progressLog.textContent = t;
+  if (tracker?.feed(t)) renderStage();
 });
 
 // ---- boot ----
