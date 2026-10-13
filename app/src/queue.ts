@@ -5,16 +5,26 @@
 // the next item when a run finishes, and the server only ever sees one
 // request in flight. The queue is in-memory and does not survive a restart.
 //
-// Each item captures its settings (GenParams) when it is added, so later
-// edits to the settings panel never change work already queued. Which
-// settings get captured is decided by the caller (see `queueSameSettings` in
-// prefs.ts); this module only stores and shows them.
+// Each item gets its settings (GenParams) when it is added; which settings is
+// decided by the caller (see `queueSameSettings` in prefs.ts). After that the
+// item's own card can change them until the job starts: the "Up next" list
+// shows one collapsible card per item (design handoff, Phase 2):
 //
-// This module owns the item list and its strip of thumbnails in the left
-// panel. Starting jobs, and deciding when to, stays in main.ts.
+//   collapsed   #  [thumb]  name                                 ˅
+//                           1024  bg auto  xatlas  Game 50K/2048  seed 42
+//   expanded    the same header, then the settings editor (controls.ts)
+//               and Move up / Remove
+//
+// Only one card is open at a time, and a newly added image opens. Cards are
+// built once per item and reused across renders, so an open editor keeps its
+// state (and focus) while the list around it changes.
+//
+// This module owns the items and their cards. Starting jobs, and deciding
+// when to, stays in main.ts.
 
+import { createSettingsEditor, type SettingsEditor } from "./controls";
+import { paramChips } from "./options";
 import { newId } from "./store";
-import { paramChips, tileLabel } from "./options";
 import type { GenParams } from "./types";
 
 /** One image waiting to be generated. */
@@ -23,7 +33,7 @@ export interface QueueItem {
   image: Blob;
   /** Original file name, used for the output file and the gallery entry. */
   name: string;
-  /** Settings this item will run with, fixed when it was queued. */
+  /** Settings this item will run with; editable on its card until it starts. */
   params: GenParams;
   /** Object URL for the thumbnail; revoked when the item leaves the queue. */
   thumbUrl: string;
@@ -33,23 +43,53 @@ export interface QueueItem {
 export interface QueueElements {
   /** Container; hidden while the queue is empty. */
   wrap: HTMLElement;
-  /** Heading text, e.g. "Queued · 3". */
+  /** Heading text, e.g. "Queued · 3" (kept for screen readers / tooltips). */
   label: HTMLElement;
-  /** Horizontal strip of thumbnails. */
+  /** Vertical list of job cards. */
   list: HTMLElement;
   /** "Clear" button. */
   clearBtn: HTMLElement;
 }
 
-/** FIFO queue of pending generations, with its own thumbnail strip. */
+/** The DOM of one card, kept for the item's lifetime. */
+interface Card {
+  root: HTMLElement;
+  head: HTMLButtonElement;
+  pos: HTMLElement;
+  chips: HTMLElement;
+  /** Built on first open (most queued items are never edited). */
+  editor: SettingsEditor | null;
+  body: HTMLElement;
+  moveUp: HTMLButtonElement;
+}
+
+const CHEVRON_SVG =
+  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>';
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, className = "", text = ""): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text) node.textContent = text;
+  return node;
+}
+
+function fillChips(container: HTMLElement, p: GenParams): void {
+  container.replaceChildren(...paramChips(p).map((c) => el("span", "chip", c)));
+}
+
+/** FIFO queue of pending generations, with its own editable cards. */
 export class GenerationQueue {
   private items: QueueItem[] = [];
+  private readonly cards = new Map<string, Card>();
+  /** The expanded card, if any. */
+  private openId: string | null = null;
 
   /**
    * @param els      Where to render the queue.
-   * @param onChange Called after every add/remove/clear/take, so the caller
-   *                 can refresh things that depend on the queue (e.g. whether
-   *                 Generate is enabled).
+   * @param onChange Called after every add/remove/move/clear/take, so the
+   *                 caller can refresh things that depend on the queue (e.g.
+   *                 the count pill, whether Generate is enabled).
    */
   constructor(
     private readonly els: QueueElements,
@@ -64,38 +104,65 @@ export class GenerationQueue {
     return this.items.length;
   }
 
-  /** Append an image to the end of the queue with the given settings. */
+  /** Append an image to the end of the queue with the given settings, and open its card. */
   add(image: Blob, name: string, params: GenParams): void {
-    this.items.push({ id: newId(), image, name, params, thumbUrl: URL.createObjectURL(image) });
+    const item: QueueItem = { id: newId(), image, name, params: { ...params }, thumbUrl: URL.createObjectURL(image) };
+    this.items.push(item);
+    this.openId = item.id;
     this.changed();
   }
 
   /**
    * Remove and return the next item, or undefined if the queue is empty.
-   * Its thumbnail URL is revoked; the image Blob itself stays valid.
+   * It runs with the settings its card shows right now. Its thumbnail URL is
+   * revoked; the image Blob itself stays valid.
    */
   take(): QueueItem | undefined {
     const item = this.items.shift();
     if (!item) return undefined;
-    URL.revokeObjectURL(item.thumbUrl);
+    this.drop(item);
     this.changed();
     return item;
   }
 
-  /** Remove one item by id (the ✕ on its thumbnail). */
+  /** Remove one item by id (Remove on its card). */
   remove(id: string): void {
     const i = this.items.findIndex((q) => q.id === id);
     if (i < 0) return;
-    URL.revokeObjectURL(this.items[i].thumbUrl);
+    this.drop(this.items[i]);
     this.items.splice(i, 1);
+    this.changed();
+  }
+
+  /** Swap an item with the one above it (Move up on its card). */
+  moveUp(id: string): void {
+    const i = this.items.findIndex((q) => q.id === id);
+    if (i <= 0) return;
+    [this.items[i - 1], this.items[i]] = [this.items[i], this.items[i - 1]];
     this.changed();
   }
 
   /** Drop everything that's waiting. Does not affect a job already running. */
   clear(): void {
-    this.items.forEach((q) => URL.revokeObjectURL(q.thumbUrl));
+    this.items.forEach((q) => this.drop(q));
     this.items = [];
     this.changed();
+  }
+
+  /** Open one card (closing any other), or close it if it's already open. */
+  toggle(id: string): void {
+    this.openId = this.openId === id ? null : id;
+    this.render();
+    // An opened editor is taller than the panel's visible area; bring it into view.
+    if (this.openId) this.cards.get(id)?.root.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  /** Forget an item's card and thumbnail URL (it's leaving the queue). */
+  private drop(item: QueueItem): void {
+    URL.revokeObjectURL(item.thumbUrl);
+    this.cards.get(item.id)?.root.remove();
+    this.cards.delete(item.id);
+    if (this.openId === item.id) this.openId = null;
   }
 
   private changed(): void {
@@ -103,42 +170,69 @@ export class GenerationQueue {
     this.onChange();
   }
 
-  /**
-   * Rebuild the thumbnail strip. Items reuse the gallery's tile styles
-   * (.gitem/.gmeta/.gdel in ui.css) at a smaller size (.qitem).
-   */
+  /** Build the card for one item (once; render() reuses it). */
+  private buildCard(item: QueueItem): Card {
+    const root = el("div", "qcard");
+
+    const head = el("button", "qcard-head");
+    head.type = "button";
+    const pos = el("span", "qcard-pos mono");
+    const thumb = el("img", "qcard-thumb");
+    thumb.src = item.thumbUrl;
+    thumb.alt = "";
+    const info = el("span", "qcard-info");
+    const chips = el("span", "chips");
+    info.append(el("span", "qcard-name", item.name), chips);
+    const chevron = el("span", "qcard-chevron");
+    chevron.innerHTML = CHEVRON_SVG;
+    head.append(pos, thumb, info, chevron);
+    head.addEventListener("click", () => this.toggle(item.id));
+
+    const body = el("div", "qcard-body");
+    const actions = el("div", "qcard-actions");
+    const moveUp = el("button", "ghost-btn small", "Move up");
+    moveUp.type = "button";
+    moveUp.addEventListener("click", () => this.moveUp(item.id));
+    const remove = el("button", "ghost-btn small danger", "Remove");
+    remove.type = "button";
+    remove.addEventListener("click", () => this.remove(item.id));
+    actions.append(moveUp, remove);
+    body.append(actions);
+
+    root.append(head, body);
+    fillChips(chips, item.params);
+    const card: Card = { root, head, pos, chips, editor: null, body, moveUp };
+    this.cards.set(item.id, card);
+    return card;
+  }
+
+  /** Create the card's settings editor the first time it opens. */
+  private ensureEditor(item: QueueItem, card: Card): void {
+    if (card.editor) return;
+    card.editor = createSettingsEditor(item.params, (p) => {
+      item.params = p;
+      fillChips(card.chips, p);
+    });
+    card.body.prepend(card.editor.el);
+  }
+
+  /** Put the cards in queue order and sync numbers, open state and buttons. */
   private render(): void {
     const { wrap, label, list } = this.els;
     wrap.classList.toggle("hidden", this.items.length === 0);
     label.textContent = `Queued · ${this.items.length}`;
-    list.innerHTML = "";
 
-    this.items.forEach((q, i) => {
-      const tile = document.createElement("div");
-      tile.className = "gitem qitem";
-      tile.title = `${i + 1}. ${q.name} · ${describeParams(q.params)}`;
-
-      const img = document.createElement("img");
-      img.src = q.thumbUrl;
-      img.alt = q.name;
-      tile.appendChild(img);
-
-      const meta = document.createElement("div");
-      meta.className = "gmeta";
-      meta.textContent = tileLabel(q.params);
-      tile.appendChild(meta);
-
-      const del = document.createElement("button");
-      del.className = "gdel";
-      del.textContent = "✕";
-      del.title = "Remove from queue";
-      del.addEventListener("click", (e) => {
-        e.stopPropagation();
-        this.remove(q.id);
-      });
-      tile.appendChild(del);
-
-      list.appendChild(tile);
+    this.items.forEach((item, i) => {
+      const card = this.cards.get(item.id) ?? this.buildCard(item);
+      const open = item.id === this.openId;
+      if (open) this.ensureEditor(item, card);
+      card.root.classList.toggle("open", open);
+      card.head.setAttribute("aria-expanded", String(open));
+      card.head.title = open ? "Collapse" : "Edit settings for this image";
+      card.pos.textContent = String(i + 1);
+      card.moveUp.disabled = i === 0;
+      // appendChild moves an existing node, so this also applies Move up's new order.
+      list.appendChild(card.root);
     });
   }
 }

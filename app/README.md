@@ -15,7 +15,7 @@ src/            web UI (Vite + TypeScript, framework-free)
   api.ts        POST /generate, GET /health against trellis-server
   viewer.ts     <model-viewer> wrapper (vendored in public/vendor): clay mode, turnaround sheets
   store.ts      IndexedDB gallery (input + GLB + thumbnail blobs)
-  queue.ts      in-memory generation queue + its thumbnail strip (server runs one job at a time)
+  queue.ts      in-memory generation queue + its editable "Up next" cards (server runs one job at a time)
   stages.ts     running-job stage + percent from the server log; learns this machine's timings
   prefs.ts      UI preferences in localStorage (kept out of the installer's config.json)
   options.ts    every generation option: values, labels, output presets, chips

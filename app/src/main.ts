@@ -236,8 +236,9 @@ window.addEventListener("paste", async (e: ClipboardEvent) => {
 
 // ---- queue ----
 /**
- * Queue an image. Its settings are fixed now, from one of two sources
- * (Settings → "Queued images use the same settings…", prefs.ts):
+ * Queue an image. Its starting settings come from one of two sources
+ * (Settings → "Queued images use the same settings…", prefs.ts), and its
+ * card in "Up next" can change them until it starts (queue.ts):
  *   - on, while a job runs: a copy of the running job's settings, so a batch
  *     dropped onto a running generation all comes out the same;
  *   - otherwise: whatever the settings panel shows right now.

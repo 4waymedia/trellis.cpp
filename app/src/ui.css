@@ -236,8 +236,30 @@ button { font-family: inherit; color: inherit; }
 }
 .bar-fill.indeterminate { width: 35%; animation: indeterminate 1.3s ease-in-out infinite; }
 
-/* queued thumbnails (queue.ts; Phase 2 replaces them with collapsible cards) */
-.queue-list { display: flex; gap: 6px; overflow-x: auto; padding: 2px; }
+/* "Up next": one collapsible, editable card per queued image (queue.ts) */
+.queue-list { display: grid; gap: 8px; }
+.qcard {
+  border-radius: var(--r-card); background: var(--bg-card); border: 1px solid var(--line-1);
+  transition: background var(--t-fast), border-color var(--t-fast);
+}
+.qcard.open { background: var(--bg-card-open); border-color: rgba(255, 255, 255, 0.12); }
+.qcard-head {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px; text-align: left;
+  background: none; border: none; cursor: pointer; border-radius: var(--r-card);
+}
+.qcard-head:hover .qcard-name { color: #fff; }
+.qcard-pos { font-size: 11px; color: var(--text-muted); width: 14px; text-align: center; flex: none; }
+.qcard-thumb { width: 44px; height: 44px; border-radius: var(--r-btn); object-fit: cover; flex: none; background: var(--bg-input); }
+.qcard-info { min-width: 0; flex: 1; display: grid; gap: 4px; }
+.qcard-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qcard-chevron { flex: none; color: var(--text-label); display: grid; place-items: center; transition: transform var(--t-chevron); }
+.qcard.open .qcard-chevron { transform: rotate(180deg); }
+.qcard-body { display: none; padding: 12px; border-top: 1px solid var(--line-2); gap: 12px; }
+.qcard.open .qcard-body { display: grid; }
+.qcard-actions { display: flex; gap: 8px; }
+.ghost-btn.small { height: 26px; padding: 0 10px; font-size: 12px; }
+.ghost-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.ghost-btn:disabled:hover { background: transparent; color: var(--text-3); }
 
 /* drop zone */
 .dropzone {
@@ -450,18 +472,7 @@ button { font-family: inherit; color: inherit; }
   border: none; border-radius: 50%; background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 11px;
   cursor: pointer; display: none;
 }
-.gtile:hover .gdel, .gitem:hover .gdel { display: block; }
-
-/* small queue tiles (queue.ts) */
-.gitem {
-  position: relative; flex: 0 0 auto; width: 56px; height: 56px; border-radius: var(--r-btn); overflow: hidden;
-  box-shadow: 0 0 0 1px var(--line-3); background: var(--bg-input);
-}
-.gitem img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.gitem .gmeta {
-  position: absolute; left: 0; right: 0; bottom: 0; font-family: var(--mono); font-size: 8.5px; text-align: center;
-  color: #fff; background: rgba(0, 0, 0, 0.6); padding: 1px 2px; white-space: nowrap; overflow: hidden;
-}
+.gtile:hover .gdel { display: block; }
 
 /* ===================== Toasts ===================== */
 .toasts { position: fixed; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 50; max-width: 420px; }
