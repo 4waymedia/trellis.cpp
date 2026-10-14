@@ -16,6 +16,7 @@ src/            web UI (Vite + TypeScript, framework-free)
   viewer.ts     <model-viewer> wrapper (vendored in public/vendor): clay mode, turnaround sheets
   store.ts      IndexedDB gallery (input + GLB + thumbnail blobs)
   queue.ts      in-memory generation queue + its editable "Up next" cards (server runs one job at a time)
+  sortable.ts   drag-to-reorder for the queue cards (pointer events, no library)
   stages.ts     running-job stage + percent from the server log; learns this machine's timings
   prefs.ts      UI preferences in localStorage (kept out of the installer's config.json)
   options.ts    every generation option: values, labels, output presets, chips

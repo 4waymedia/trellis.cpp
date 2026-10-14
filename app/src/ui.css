@@ -248,7 +248,20 @@ button { font-family: inherit; color: inherit; }
   background: none; border: none; cursor: pointer; border-radius: var(--r-card);
 }
 .qcard-head:hover .qcard-name { color: #fff; }
+.qcard-head { touch-action: none; } /* the header drags (sortable.ts) */
 .qcard-pos { font-size: 11px; color: var(--text-muted); width: 14px; text-align: center; flex: none; }
+.qcard-grip { display: none; width: 14px; flex: none; place-items: center; color: var(--text-label); cursor: grab; }
+.qcard-head:hover .qcard-pos, .qcard-head:focus-visible .qcard-pos { display: none; }
+.qcard-head:hover .qcard-grip, .qcard-head:focus-visible .qcard-grip { display: grid; }
+/* while dragging: the card follows the pointer, a dashed slot shows where it lands */
+.sort-placeholder { border-radius: var(--r-card); border: 1.5px dashed rgba(109, 140, 255, 0.45); background: rgba(109, 140, 255, 0.06); }
+.qcard.sort-dragging {
+  z-index: 100; pointer-events: none; background: var(--bg-card-open); border-color: rgba(109, 140, 255, 0.45);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55); transform: scale(1.02);
+}
+.qcard.sort-dragging .qcard-pos { display: none; }
+.qcard.sort-dragging .qcard-grip { display: grid; color: var(--accent-light); }
+body.sorting, body.sorting * { cursor: grabbing !important; user-select: none; }
 .qcard-thumb { width: 44px; height: 44px; border-radius: var(--r-btn); object-fit: cover; flex: none; background: var(--bg-input); }
 .qcard-info { min-width: 0; flex: 1; display: grid; gap: 4px; }
 .qcard-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
