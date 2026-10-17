@@ -10,7 +10,8 @@
 //                      (QEM decimation face target, >= 1000 or "auto" — see
 //                      --faces), and for
 //                      pixal3d the camera: "fov" (degrees), "mesh_scale",
-//                      "extend_pixel". Returns model/gltf-binary.
+//                      "extend_pixel", and "texture" (on|off; off = geometry
+//                      only, like --no-texture). Returns model/gltf-binary.
 //
 // Launch-time defaults come from CLI flags (see trellis::parse_args);
 // each request copies those defaults and applies its own overrides. The model
@@ -137,6 +138,12 @@ int main(int argc, char** argv) {
                 return;
             }
         }
+        if (req.has_file("texture")) {
+            const std::string& t = req.get_file_value("texture").content;
+            if      (t == "off" || t == "0" || t == "false") p.texture = false;
+            else if (t == "on"  || t == "1" || t == "true")  p.texture = true;
+            else { res.status = 400; res.set_content("texture must be on or off\n", "text/plain"); return; }
+        }
         if (req.has_file("webp")) {
             const std::string& w = req.get_file_value("webp").content;
             p.webp = (w == "off" || w == "0" || w == "false") ? 0
@@ -163,10 +170,10 @@ int main(int argc, char** argv) {
                 res.set_content("{\"error\":\"failed to stage input image\"}", "application/json");
                 return;
             }
-            fprintf(stderr, "[trellis-server] generate: %zu-byte image, seed %u, res %s, bg %s, uv %s, faces %d\n",
+            fprintf(stderr, "[trellis-server] generate: %zu-byte image, seed %u, res %s, bg %s, uv %s, faces %d, texture %s\n",
                     image.content.size(), p.seed, p.cascade ? std::to_string(p.hr_res).c_str() : "512",
                     p.birefnet < 0 ? "auto" : (p.birefnet ? "birefnet" : "threshold"), p.xatlas ? "xatlas" : "box",
-                    trellis::qem_face_target(p));
+                    trellis::qem_face_target(p), p.texture ? "on" : "off");
             try {
                 int rc = trellis_run(p);
                 if (rc == 0) glb = read_file_bytes(p.output);
