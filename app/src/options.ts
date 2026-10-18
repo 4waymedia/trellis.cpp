@@ -22,7 +22,7 @@ export interface Choice<T> {
 export const RESOLUTIONS: readonly Choice<Resolution>[] = [
   { value: 512, label: "512 · fast", title: "Light single-resolution path; enough for small or distant assets" },
   { value: 1024, label: "1024", title: "512 -> 1024 cascade (the engine default)" },
-  { value: 1536, label: "1536 · high", title: "Highest detail; slower and needs more VRAM" },
+  { value: 1536, label: "1536 · high", title: "Finest grid, but slower (about 2x) and in tests it can lose small features like eyes and soften the texture; prefer 1024 for characters" },
 ];
 
 export const BG_REMOVALS: readonly Choice<BgRemoval>[] = [
@@ -65,7 +65,7 @@ export const PRESETS: readonly Preset[] = [
   { id: "character", label: "Character", faces: 25_000, atlas: 2048, title: "Characters at gameplay distance: a light mesh with a sharp face texture" },
   { id: "game", label: "Game", faces: 50_000, atlas: 2048, title: "Standard props for Unreal" },
   { id: "hero", label: "Hero", faces: 150_000, atlas: 2048, title: "Characters, bosses, close-up assets" },
-  { id: "handoff", label: "Handoff", faces: 300_000, atlas: 4096, title: "Maximum detail as reference for a 3D modeler (use 1536)" },
+  { id: "handoff", label: "Handoff", faces: 300_000, atlas: 4096, title: "Maximum detail as reference for a 3D modeler (use 1024; 1536 can lose small features)" },
 ];
 
 /** Choices in the Custom panel. */
