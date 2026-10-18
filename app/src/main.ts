@@ -51,6 +51,7 @@ function readParams(): GenParams {
     seed: isNaN(seed) ? DEFAULT_PARAMS.seed : seed,
     bgRemoval: ($("ctl-bg") as HTMLSelectElement).value as GenParams["bgRemoval"],
     uv: ($("ctl-uv") as HTMLSelectElement).value as GenParams["uv"],
+    texture: ($("ctl-tex") as HTMLSelectElement).value !== "off",
   };
 }
 
@@ -59,6 +60,8 @@ function applyParams(p: GenParams): void {
   ($("ctl-seed") as HTMLInputElement).value = String(p.seed);
   ($("ctl-bg") as HTMLSelectElement).value = p.bgRemoval;
   ($("ctl-uv") as HTMLSelectElement).value = p.uv;
+  // records saved before this option existed have no field: treat as textured
+  ($("ctl-tex") as HTMLSelectElement).value = p.texture === false ? "off" : "on";
 }
 
 // ---- toasts ----
