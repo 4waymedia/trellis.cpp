@@ -88,9 +88,9 @@
               <div id="dropzone-hint" class="dropzone-hint">
                 <span class="dz-plus" aria-hidden="true">+</span>
                 <span id="dropzone-title" class="dz-title">Drop an image to start</span>
-                <span class="dz-sub">or click to browse · PNG, JPG, WEBP</span>
+                <span class="dz-sub">or click to browse · PNG, JPG, WEBP · GLB to view</span>
               </div>
-              <input id="file-input" type="file" accept="image/*" multiple hidden />
+              <input id="file-input" type="file" accept="image/*,.glb,model/gltf-binary" multiple hidden />
             </div>
 
             <!-- Settings for the next generation (Phase 2: the "New images use" defaults card) -->
@@ -112,7 +112,7 @@
 
           <div id="viewer-empty" class="viewer-empty">
             <span class="viewer-empty-title">Nothing to show yet</span>
-            <span class="viewer-empty-sub">Drop an image into the queue to generate a model.</span>
+            <span class="viewer-empty-sub">Drop an image into the queue to generate a model, or a .glb here to view it.</span>
           </div>
 
           <!-- Model details: an (i) button; clicking it opens the info card below it. -->
@@ -143,6 +143,8 @@
                   title="Untextured matte grey: the form without the paint">Clay</button>
                 <button data-shade="wireframe" class="seg-opt" role="radio" aria-checked="false"
                   title="Triangles over clay: the face density">Wireframe</button>
+                <button data-shade="colorwire" class="seg-opt" role="radio" aria-checked="false"
+                  title="Triangles in the texture's colors, no surface: where each color sits, hidden parts included">Color wire</button>
               </div>
               <button id="reset-view" class="glass-btn" disabled>Reset view</button>
             </div>

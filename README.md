@@ -80,9 +80,12 @@ it starts and supervises the server for you.
 - **Output presets.** Pick what the asset is for (Icon, Lite, Character, Game, Hero or Handoff)
   and Studio sets the face count and texture size, or choose **Custom**.
 - **Viewport options.** Switch the preview between **Textured**, **Clay** (the bare
-  form, to judge shape) and **Wireframe** (triangles over clay, to judge density).
+  form, to judge shape), **Wireframe** (triangles over clay, to judge density) and
+  **Color wire** (triangles in the texture's colors, which also reveals parts hidden
+  behind other surfaces).
   **Model details** shows the face count, textures and settings, and **Export
-  handoff** packages everything a 3D modeler needs.
+  handoff** packages everything a 3D modeler needs. Drop any `.glb` onto the viewer
+  to inspect it the same way, e.g. a `trellis-cli` output.
 - **Gallery.** Every result is saved locally and reloads with its source image and
   settings, even after a restart.
 
@@ -129,8 +132,8 @@ it starts and supervises the server for you.
    **Clear** the lot. The server runs one job at a time and the queue lives in memory.
 5. **Inspect.** Rotate and zoom in the interactive preview (Google's three.js-based
    `<model-viewer>`). **Shading** switches between **Textured**, **Clay** (untextured
-   matte grey, to judge the form) and **Wireframe** (triangles over clay, to judge
-   face density). **Reset view** re-frames the camera, and **Model details** shows
+   matte grey, to judge the form), **Wireframe** (triangles over clay, to judge
+   face density) and **Color wire** (triangles in the texture's colors, no surface). **Reset view** re-frames the camera, and **Model details** shows
    the face count, textures and the settings used. **Save GLB** exports the model.
    **Export handoff** writes a folder for a 3D modeler: the GLB, source image,
    extracted textures, textured + clay turnaround sheets and a `notes.txt`.

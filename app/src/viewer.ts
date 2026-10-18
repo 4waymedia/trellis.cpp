@@ -8,6 +8,9 @@
 //     reloaded and the original textures are restored exactly);
 //   - Wireframe: the mesh's triangles drawn over the shaded surface, to see
 //     the face density a face target produces (works together with clay);
+//   - Color wire: the model's own textured materials drawn as lines only, so
+//     every edge takes the texture's color and parts hidden behind other
+//     surfaces (e.g. eyes under a lid) show through;
 //   - Turnaround sheets: four views around the model composited into one
 //     labelled PNG, for the modeler handoff package.
 
@@ -90,6 +93,13 @@ const WIRE_OPACITY = 0.5;
 const WIRE_TAG = "trellisWireframe"; // userData flag marking our overlay meshes
 
 /**
+ * How the wireframe is drawn: "overlay" = dark lines over the surface (pairs
+ * with clay); "textured" = the model's own materials switched to lines, in
+ * the texture's colors, with no surface.
+ */
+export type WireStyle = "overlay" | "textured";
+
+/**
  * model-viewer's three.js scene. NOT public API: model-viewer stores it on the
  * element under a module-private `Symbol("scene")`, and its `queueRender()`
  * asks for a redraw. Both exist in the vendored build (public/vendor); if an
@@ -165,6 +175,10 @@ export class Viewer {
   /** Overlay meshes added for the current model, and the surface materials we offset. */
   private overlays: ThreeObject[] = [];
   private offsetMaterials: ThreeMaterial[] = [];
+  /** Which wireframe look is wanted; it stays across model loads. */
+  private wireStyle: WireStyle = "overlay";
+  /** Model materials switched to wireframe by the "textured" style. */
+  private wiredMaterials: ThreeMaterial[] = [];
 
   constructor(mount: HTMLElement) {
     const mv = document.createElement("model-viewer") as ModelViewerEl;
@@ -318,14 +332,16 @@ export class Viewer {
   }
 
   /**
-   * Draw the triangles over the shaded surface (true) or remove them (false).
+   * Draw the triangles (true) or remove them (false), in the given style
+   * (default: the current one, so callers that toggle it off and on keep it).
    * @returns false if unsupported by this model-viewer build (nothing changes).
    */
-  setWireframe(on: boolean): boolean {
+  setWireframe(on: boolean, style: WireStyle = this.wireStyle): boolean {
     if (!this.supportsWireframe) return false;
     this.wire = on;
+    this.wireStyle = style;
+    this.removeWireframe(); // also clears the other style when switching
     if (on) this.applyWireframe();
-    else this.removeWireframe();
     return true;
   }
 
@@ -337,7 +353,7 @@ export class Viewer {
    */
   private applyWireframe(): void {
     const scene = threeSceneOf(this.el);
-    if (!scene || this.overlays.length) return;
+    if (!scene || this.overlays.length || this.wiredMaterials.length) return;
     const targets: ThreeObject[] = [];
     scene.traverse((o) => {
       const mat = o.material;
@@ -347,6 +363,19 @@ export class Viewer {
         targets.push(o);
       }
     });
+    if (this.wireStyle === "textured") {
+      // Switch the model's own materials to lines: three.js draws each edge
+      // with the material's texture, and with no filled faces nothing hides
+      // the edges behind other surfaces.
+      for (const mesh of targets) {
+        const surface = mesh.material as ThreeMaterial;
+        if (surface.wireframe) continue;
+        surface.wireframe = true;
+        this.wiredMaterials.push(surface);
+      }
+      scene.queueRender();
+      return;
+    }
     for (const mesh of targets) {
       const surface = mesh.material as ThreeMaterial;
       const MaterialCtor = surface.constructor as new () => ThreeMaterial;
@@ -379,8 +408,10 @@ export class Viewer {
       (overlay.material as ThreeMaterial).dispose();
     }
     for (const m of this.offsetMaterials) m.polygonOffset = false;
+    for (const m of this.wiredMaterials) m.wireframe = false;
     this.overlays = [];
     this.offsetMaterials = [];
+    this.wiredMaterials = [];
     threeSceneOf(this.el)?.queueRender();
   }
 

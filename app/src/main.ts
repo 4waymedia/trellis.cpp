@@ -169,6 +169,7 @@ window.addEventListener("drop", (e) => e.preventDefault());
 
 const IMAGE_EXT = /\.(png|jpe?g|webp|bmp|gif|tiff?)$/i;
 const isImage = (f: File) => f.type.startsWith("image/") || IMAGE_EXT.test(f.name);
+const isGlb = (f: File) => f.type === "model/gltf-binary" || /\.glb$/i.test(f.name);
 
 /**
  * Single entry point for every new image (browse, drop, paste).
@@ -181,20 +182,25 @@ function acceptImage(image: Blob, name: string): void {
 }
 
 /**
- * Browse / drop entry point for one or more files. Non-images are skipped
- * with a toast. With several images, only the first can become the input;
- * the rest always queue behind it.
+ * Browse / drop entry point for one or more files. A .glb opens in the viewer
+ * (see openGlb); other non-images are skipped with a toast. With several
+ * images, only the first can become the input; the rest always queue behind it.
  */
 function acceptFiles(files: File[]): void {
+  const glbs = files.filter(isGlb);
   const images = files.filter(isImage);
-  const skipped = files.length - images.length;
+  const skipped = files.length - images.length - glbs.length;
   if (skipped) {
     toast(
       skipped === 1 && files.length === 1
-        ? `"${files[0].name}" isn't an image — drop a PNG, JPEG or WebP.`
-        : `Skipped ${skipped} non-image file${skipped > 1 ? "s" : ""}.`,
+        ? `"${files[0].name}" isn't an image or a .glb — drop a PNG, JPEG, WebP or GLB.`
+        : `Skipped ${skipped} unsupported file${skipped > 1 ? "s" : ""}.`,
       "err",
     );
+  }
+  if (glbs.length) {
+    void openGlb(glbs[0]);
+    if (glbs.length > 1) toast(`Opened "${glbs[0].name}": the viewer shows one model at a time.`);
   }
   // Only the first can become the input; the rest always queue (when idle they'd
   // otherwise just replace each other in the preview).
@@ -215,6 +221,22 @@ dropzone.addEventListener("dragleave", (e) => {
 dropzone.addEventListener("drop", (e) => {
   e.preventDefault();
   dropzone.classList.remove("drag");
+  acceptFiles([...((e as DragEvent).dataTransfer?.files ?? [])]);
+});
+// The viewer is a drop target too: a .glb opens there, an image goes to the queue.
+const viewerPanel = document.querySelector<HTMLElement>(".viewer-panel")!;
+["dragenter", "dragover"].forEach((ev) =>
+  viewerPanel.addEventListener(ev, (e) => {
+    e.preventDefault();
+    viewerPanel.classList.add("drag");
+  }),
+);
+viewerPanel.addEventListener("dragleave", (e) => {
+  if (!viewerPanel.contains((e as DragEvent).relatedTarget as Node | null)) viewerPanel.classList.remove("drag");
+});
+viewerPanel.addEventListener("drop", (e) => {
+  e.preventDefault();
+  viewerPanel.classList.remove("drag");
   acceptFiles([...((e as DragEvent).dataTransfer?.files ?? [])]);
 });
 window.addEventListener("paste", async (e: ClipboardEvent) => {
@@ -283,29 +305,71 @@ document.addEventListener("keydown", (e) => {
 });
 
 /**
+ * What a GLB actually contains, as stats-pill parts: face count, atlas size
+ * (or "no texture" for a geometry-only model) and file size.
+ */
+async function glbStats(glb: Blob): Promise<{ info: GlbInfo | null; parts: string[] }> {
+  const info = await inspectGlb(glb).catch(() => null);
+  const base = info?.images.find((i) => i.role === "basecolor");
+  const bmp = base ? await createImageBitmap(base.data).catch(() => null) : null;
+  const parts: string[] = [];
+  if (info) parts.push(`${formatFaces(info.faces)} faces`);
+  if (bmp) parts.push(`${bmp.width} px atlas`);
+  else if (info && !base) parts.push("no texture");
+  bmp?.close();
+  parts.push(`${(glb.size / 1e6).toFixed(1)} MB`);
+  return { info, parts };
+}
+
+/** Fill the viewer's info card: status tag, name, chips and stats. */
+function setViewerInfo(tag: string, name: string, chips: string[], stats: string[]): void {
+  viewerEmpty.classList.add("hidden");
+  viewerInfo.classList.remove("hidden");
+  viewerTag.classList.remove("live");
+  viewerTag.textContent = tag;
+  viewerName.textContent = name;
+  renderChips(viewerChips, chips);
+  viewerStats.textContent = stats.join(" · ");
+}
+
+/**
  * Show a finished result's info around the viewer: status tag, name, chips
  * and the stats pill with the values the GLB actually contains.
  *
  * @returns what the GLB contains, or null if it couldn't be read.
  */
 async function showResultInfo(name: string, params: GenParams, glb: Blob, durationMs?: number): Promise<GlbInfo | null> {
-  viewerEmpty.classList.add("hidden");
-  viewerInfo.classList.remove("hidden");
-  viewerTag.classList.remove("live");
-  viewerTag.textContent = durationMs != null ? `Completed · ${fmtElapsed(durationMs)}` : "Completed";
-  viewerName.textContent = name;
-  renderChips(viewerChips, paramChips(params));
-
-  const info = await inspectGlb(glb).catch(() => null);
-  const base = info?.images.find((i) => i.role === "basecolor");
-  const bmp = base ? await createImageBitmap(base.data).catch(() => null) : null;
-  const stats = [`${params.resolution}`, `seed ${params.seed}`];
-  if (info) stats.push(`${formatFaces(info.faces)} faces`);
-  if (bmp) stats.push(`${bmp.width} px atlas`);
-  bmp?.close();
-  stats.push(`${(glb.size / 1e6).toFixed(1)} MB`);
-  viewerStats.textContent = stats.join(" · ");
+  const { info, parts } = await glbStats(glb);
+  setViewerInfo(
+    durationMs != null ? `Completed · ${fmtElapsed(durationMs)}` : "Completed",
+    name,
+    paramChips(params),
+    [`${params.resolution}`, `seed ${params.seed}`, ...parts],
+  );
   return info;
+}
+
+/**
+ * Open a .glb from disk in the viewer: a trellis-cli output, an older export,
+ * a model from another tool. Shading, Reset view, Model details and Save GLB
+ * all work. It isn't added to the gallery (that holds generations, with their
+ * source image and settings), and Export handoff stays off because it needs both.
+ */
+async function openGlb(file: File): Promise<void> {
+  try {
+    await viewer.load(file);
+  } catch (e) {
+    toast(`Couldn't open "${file.name}": ${(e as Error).message}`, "err");
+    return;
+  }
+  currentGlb = file;
+  currentName = file.name;
+  activeId = null;
+  setViewerTools(true);
+  exportBtn.disabled = true;
+  const { parts } = await glbStats(file);
+  setViewerInfo("Opened from file", file.name, [], parts);
+  await refreshGallery(); // drop the gallery highlight: the viewer no longer shows a record
 }
 
 /**
@@ -521,20 +585,24 @@ function setViewerTools(on: boolean): void {
 }
 resetViewBtn.addEventListener("click", () => viewer.resetView());
 
-type Shade = "textured" | "clay" | "wireframe";
+type Shade = "textured" | "clay" | "wireframe" | "colorwire";
 
 /**
- * Shading (Textured | Clay | Wireframe), one exclusive choice as in the design.
- * Wireframe draws the triangles over clay, which reads best. It relies on
- * model-viewer internals (viewer.ts), so if they're unavailable that option
- * disables itself and the view falls back to clay.
+ * Shading (Textured | Clay | Wireframe | Color wire), one exclusive choice.
+ * Wireframe draws dark triangles over clay, which reads best for density;
+ * Color wire draws the triangles alone in the texture's colors, which shows
+ * where each color sits, hidden parts included. Both rely on model-viewer
+ * internals (viewer.ts), so if they're unavailable those options disable
+ * themselves and the view falls back to clay.
  */
 function setShade(shade: Shade): void {
-  viewer.setClay(shade !== "textured");
-  if (!viewer.setWireframe(shade === "wireframe") && shade === "wireframe") {
-    const wireOpt = shadeSeg.querySelector<HTMLButtonElement>('[data-shade="wireframe"]')!;
-    wireOpt.disabled = true;
-    wireOpt.title = "Wireframe isn't available with this version of the 3D viewer";
+  viewer.setClay(shade === "clay" || shade === "wireframe");
+  const wire = shade === "wireframe" || shade === "colorwire";
+  if (!viewer.setWireframe(wire, shade === "colorwire" ? "textured" : "overlay") && wire) {
+    shadeSeg.querySelectorAll<HTMLButtonElement>('[data-shade="wireframe"], [data-shade="colorwire"]').forEach((b) => {
+      b.disabled = true;
+      b.title = "Wireframe isn't available with this version of the 3D viewer";
+    });
     toast("Wireframe isn't available with this version of the 3D viewer.", "err");
     shade = "clay";
   }
