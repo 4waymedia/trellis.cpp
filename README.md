@@ -79,8 +79,9 @@ click → rotate the result.
 </p>
 
 <p align="center">
-<img src="assets/studio/queue.png" width="45%" alt="Generation queue: the running job with its named stage and percent, and editable Up next cards that can be dragged to reorder">
-<img src="assets/studio/wireframe.png" width="45%" alt="Viewer in Wireframe shading with the Model details panel open">
+<a href="assets/studio/queue.png"><img src="assets/studio/queue.png" width="32%" alt="Queue: the running job shows its stage (Image conditioning, 2 of 8) and percent; an Up next card is expanded to edit its settings"></a>
+<a href="assets/studio/clay.png"><img src="assets/studio/clay.png" width="32%" alt="Viewer in Clay shading: the untextured form, while the next job generates"></a>
+<a href="assets/studio/wireframe.png"><img src="assets/studio/wireframe.png" width="32%" alt="Viewer in Wireframe shading: triangles over clay, showing the face density of a Game preset (50K faces) model"></a>
 </p>
 
 **Using it:**
@@ -112,7 +113,7 @@ click → rotate the result.
    **Cancel** stops it.
 4. **Manage the queue.** Each **Up next** card keeps the settings it was queued
    with. Click a card to edit them, drag cards to reorder, remove one, or
-   **Clear all**. The server runs one job at a time and the queue lives in memory.
+   **Clear** the lot. The server runs one job at a time and the queue lives in memory.
 5. **Inspect.** Rotate and zoom in the interactive preview (Google's three.js-based
    `<model-viewer>`). **Shading** switches between **Textured**, **Clay** (untextured
    matte grey, to judge the form) and **Wireframe** (triangles over clay, to judge
