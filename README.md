@@ -25,7 +25,7 @@ Prebuilt binaries for Linux and Windows (Vulkan, ROCm, CUDA) are published on th
 New here? **Trellis Studio** is a one-command install that auto-detects your GPU
 runtime (CUDA / ROCm / Vulkan), downloads the server + weights, and gives you a
 drag-an-image → 3D desktop app with a generation queue, output presets for game
-and modeler use, an interactive preview and a saved gallery.
+and modeler use, a textured / clay / wireframe preview and a saved gallery.
 
 ```bash
 # Linux (x86-64)
@@ -71,8 +71,20 @@ auto-framing to settle, captures each view via `toBlob`, and
 for anyone who wants image→3D without touching the command line. The one-command
 installer above auto-detects your GPU runtime, downloads the matching
 `trellis-server` build plus the ~16.5 GB of weights, and installs the app; on launch
-it starts and supervises the server for you, so the whole flow is drag-image →
-click → rotate the result.
+it starts and supervises the server for you.
+
+- **Generation queue.** Drop a batch of images and walk away. One job runs while the
+  rest wait as **Up next** cards: each keeps its own settings, can be edited before it
+  starts, and can be dragged to reorder. The running card names the current pipeline
+  stage and shows a percent estimate that learns your machine's timings.
+- **Output presets.** Pick what the asset is for (Icon, Lite, Game, Hero or Handoff)
+  and Studio sets the face count and texture size, or choose **Custom**.
+- **Viewport options.** Switch the preview between **Textured**, **Clay** (the bare
+  form, to judge shape) and **Wireframe** (triangles over clay, to judge density).
+  **Model details** shows the face count, textures and settings, and **Export
+  handoff** packages everything a 3D modeler needs.
+- **Gallery.** Every result is saved locally and reloads with its source image and
+  settings, even after a restart.
 
 <p align="center">
 <img src="assets/trellis-studio.png" width="92%" alt="Trellis Studio: settings on the left, the generation queue with a running job and Up next cards, and the interactive 3D preview">
