@@ -77,7 +77,7 @@ it starts and supervises the server for you.
   rest wait as **Up next** cards: each keeps its own settings, can be edited before it
   starts, and can be dragged to reorder. The running card names the current pipeline
   stage and shows a percent estimate that learns your machine's timings.
-- **Output presets.** Pick what the asset is for (Icon, Lite, Game, Hero or Handoff)
+- **Output presets.** Pick what the asset is for (Icon, Lite, Character, Game, Hero or Handoff)
   and Studio sets the face count and texture size, or choose **Custom**.
 - **Viewport options.** Switch the preview between **Textured**, **Clay** (the bare
   form, to judge shape) and **Wireframe** (triangles over clay, to judge density).
@@ -113,6 +113,7 @@ it starts and supervises the server for you.
      |---|---|---|---|
      | Icon | 10K | 1024 | inventory and menu models |
      | Lite | 25K | 1024 | background props, low-end devices |
+     | Character | 25K | 2048 | characters at gameplay distance: light mesh, sharp face texture |
      | Game | 50K | 2048 | standard game props |
      | Hero | 150K | 2048 | characters and close-up assets |
      | Handoff | 300K | 4096 | maximum detail as reference for a 3D modeler (use 1536) |

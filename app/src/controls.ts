@@ -129,13 +129,13 @@ export function createSettingsEditor(
     changed();
   });
 
-  // --- output preset: 3x2 grid + inline Custom panel ---
+  // --- output preset: 3x2 grid, a full-width Custom row, then the inline Custom panel ---
   const summary = el("span", "field-summary");
   const grid = el("div", "preset-grid");
   grid.setAttribute("role", "radiogroup");
   const presetButtons = new Map<PresetMode, HTMLButtonElement>();
   const addPresetButton = (id: PresetMode, label: string, sub: string, title: string) => {
-    const b = el("button", "preset-opt");
+    const b = el("button", id === "custom" ? "preset-opt preset-custom" : "preset-opt");
     b.type = "button";
     b.setAttribute("role", "radio");
     b.title = title;

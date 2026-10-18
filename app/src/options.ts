@@ -43,7 +43,7 @@ export function bgLabel(v: BgRemoval): string {
 
 // ---------------- Output presets ----------------
 
-export type PresetId = "icon" | "lite" | "game" | "hero" | "handoff";
+export type PresetId = "icon" | "lite" | "character" | "game" | "hero" | "handoff";
 
 /** A named face target + atlas pair, chosen by what the asset is for. */
 export interface Preset {
@@ -55,13 +55,14 @@ export interface Preset {
 }
 
 /**
- * The five presets, in grid order (the sixth cell is Custom). Values are a
+ * The six presets, in grid order (Custom gets its own row below). Values are a
  * starting point for Reapers (Unreal, PC + tablets, plus modeler handoff);
  * retune them here.
  */
 export const PRESETS: readonly Preset[] = [
   { id: "icon", label: "Icon", faces: 10_000, atlas: 1024, title: "Inventory and menu models, small on screen" },
   { id: "lite", label: "Lite", faces: 25_000, atlas: 1024, title: "Background props, distant objects, low-end devices" },
+  { id: "character", label: "Character", faces: 25_000, atlas: 2048, title: "Characters at gameplay distance: a light mesh with a sharp face texture" },
   { id: "game", label: "Game", faces: 50_000, atlas: 2048, title: "Standard props for Unreal" },
   { id: "hero", label: "Hero", faces: 150_000, atlas: 2048, title: "Characters, bosses, close-up assets" },
   { id: "handoff", label: "Handoff", faces: 300_000, atlas: 4096, title: "Maximum detail as reference for a 3D modeler (use 1536)" },

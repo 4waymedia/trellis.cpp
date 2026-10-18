@@ -324,7 +324,7 @@ body.sorting, body.sorting * { cursor: grabbing !important; user-select: none; }
 .seg.compact { padding: 2px; border: none; border-radius: var(--r-seg); }
 .seg.compact .seg-opt { height: 24px; font-family: var(--mono); font-size: 11px; border-radius: 5px; padding: 0 4px; }
 
-/* output preset grid: 3 x 2 */
+/* output preset grid: 3 x 2 presets, then Custom across the full width */
 .preset-grid {
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px;
   padding: 3px; background: var(--bg-input); border: 1px solid var(--line-2); border-radius: var(--r-input);
@@ -339,6 +339,7 @@ body.sorting, body.sorting * { cursor: grabbing !important; user-select: none; }
 .preset-opt:hover:not(.on) { color: var(--text-3); }
 .preset-opt.on { background: var(--bg-seg-on); color: #fff; box-shadow: var(--seg-on-shadow); }
 .preset-opt.on .p-sub { color: var(--accent-sub); }
+.preset-opt.preset-custom { grid-column: 1 / -1; height: 30px; flex-direction: row; gap: 6px; }
 .custom-panel {
   display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 10px; row-gap: 6px;
   padding: 8px; background: rgba(109, 140, 255, 0.05); border: 1px solid rgba(109, 140, 255, 0.18); border-radius: var(--r-input);
