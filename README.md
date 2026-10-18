@@ -24,7 +24,8 @@ Prebuilt binaries for Linux and Windows (Vulkan, ROCm, CUDA) are published on th
 
 New here? **Trellis Studio** is a one-command install that auto-detects your GPU
 runtime (CUDA / ROCm / Vulkan), downloads the server + weights, and gives you a
-drag-an-image → 3D desktop app with an interactive preview and a saved gallery.
+drag-an-image → 3D desktop app with a generation queue, output presets for game
+and modeler use, an interactive preview and a saved gallery.
 
 ```bash
 # Linux (x86-64)
@@ -74,24 +75,53 @@ it starts and supervises the server for you, so the whole flow is drag-image →
 click → rotate the result.
 
 <p align="center">
-<img src="assets/trellis-studio.png" width="92%" alt="Trellis Studio — drop an image, generate a textured 3D model, preview it interactively">
+<img src="assets/trellis-studio.png" width="92%" alt="Trellis Studio: settings on the left, the generation queue with a running job and Up next cards, and the interactive 3D preview">
+</p>
+
+<p align="center">
+<img src="assets/studio/queue.png" width="45%" alt="Generation queue: the running job with its named stage and percent, and editable Up next cards that can be dragged to reorder">
+<img src="assets/studio/wireframe.png" width="45%" alt="Viewer in Wireframe shading with the Model details panel open">
 </p>
 
 **Using it:**
 
-1. **Add an image** — drag-and-drop onto the drop zone, click to browse, or paste
-   from the clipboard.
-2. **Set options** (optional) — resolution (512 light / 1024 cascade / 1536 high),
-   seed, background removal (auto / birefnet / threshold), and UV unwrap
-   (xatlas / box). Defaults match the CLI.
-3. **Generate 3D** — this takes a few minutes; a live stage line shows progress.
-4. **Inspect** — rotate and zoom in the interactive preview (Google's three.js-based
-   `<model-viewer>`); **Reset view** re-frames the camera, **Clay** shows the mesh
-   untextured to judge the form, and **Save GLB…** exports the model.
-   **Export handoff…** writes a folder for a 3D modeler: the GLB, source image,
+1. **Add images.** Drag-and-drop onto the drop zone, click to browse, or paste from
+   the clipboard. Drop several at once: the first starts generating and the rest
+   wait in the queue.
+2. **Pick settings.** The settings panel sets what *new* images use:
+   - **Resolution**: 512 · fast / 1024 (512 → 1024 cascade, the default) /
+     1536 · high.
+   - **Background removal**: Auto (keep an image's own transparency, otherwise
+     BiRefNet) / Always (BiRefNet) / Simple (white-background keyer).
+   - **UV unwrap**: xatlas (default) / Box (faster, looser packing).
+   - **Output preset**: a face target + texture atlas chosen by what the asset is for:
+
+     | Preset | Faces | Atlas | For |
+     |---|---|---|---|
+     | Icon | 10K | 1024 | inventory and menu models |
+     | Lite | 25K | 1024 | background props, low-end devices |
+     | Game | 50K | 2048 | standard game props |
+     | Hero | 150K | 2048 | characters and close-up assets |
+     | Handoff | 300K | 4096 | maximum detail as reference for a 3D modeler (use 1536) |
+
+     **Custom** sets **Faces** and **Atlas** directly (these map to the CLI's
+     `--faces` and `--atlas`).
+   - **Seed**: type one, or roll the dice for a new one.
+3. **Generate 3D.** The running card shows the current pipeline stage by name and a
+   percent estimate, which learns this machine's timings over a few runs.
+   **Cancel** stops it.
+4. **Manage the queue.** Each **Up next** card keeps the settings it was queued
+   with. Click a card to edit them, drag cards to reorder, remove one, or
+   **Clear all**. The server runs one job at a time and the queue lives in memory.
+5. **Inspect.** Rotate and zoom in the interactive preview (Google's three.js-based
+   `<model-viewer>`). **Shading** switches between **Textured**, **Clay** (untextured
+   matte grey, to judge the form) and **Wireframe** (triangles over clay, to judge
+   face density). **Reset view** re-frames the camera, and **Model details** shows
+   the face count, textures and the settings used. **Save GLB** exports the model.
+   **Export handoff** writes a folder for a 3D modeler: the GLB, source image,
    extracted textures, textured + clay turnaround sheets and a `notes.txt`.
-5. **Reuse** — every result is kept in a local **gallery** (IndexedDB): click a
-   thumbnail to reload its model, input image, and settings — even after restarting
+6. **Reuse.** Every result is kept in a local **gallery** (IndexedDB). Click a
+   thumbnail to reload its model, input image and settings, even after restarting
    the app.
 
 The **Settings** panel (gear icon) points the app at a different models directory,
