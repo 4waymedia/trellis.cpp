@@ -267,7 +267,8 @@ POST /generate      multipart/form-data with an "image" file part; optional text
                     (threshold|birefnet), "faces" (QEM face target, >= 1000 or
                     "auto"), "atlas" (UV atlas px, 256..8192 or "auto"), "webp"
                     (on|off; off = PNG textures, the most compatible for DCC
-                    tools). Invalid values return 400. Returns model/gltf-binary.
+                    tools), "texture" (on|off; off = geometry only). Invalid
+                    values return 400. Returns model/gltf-binary.
 ```
 
 Launch-time flags (including `--res`) set the per-request defaults; each request can

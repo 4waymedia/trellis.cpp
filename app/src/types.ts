@@ -22,6 +22,8 @@ export interface GenParams {
   atlas?: number;
   /** Texture encoding (server field `webp=off` for PNG). Absent = WebP, the server default. */
   textures?: TextureFormat;
+  /** false => geometry only (server field texture=off). */
+  texture: boolean;
 }
 
 /**
@@ -42,6 +44,7 @@ export const DEFAULT_PARAMS: GenParams = {
   faces: 50_000,
   atlas: 2048,
   textures: TEXTURE_FORMAT,
+  texture: true,
 };
 
 /** A random seed in the range the server accepts (uint32), for "new images get a random seed". */

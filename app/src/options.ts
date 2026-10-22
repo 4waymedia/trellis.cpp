@@ -36,6 +36,11 @@ export const UV_UNWRAPS: readonly Choice<Uv>[] = [
   { value: "box", label: "Box", title: "Six-way box projection: much faster, looser packing" },
 ];
 
+export const TEXTURE_CHOICES: readonly Choice<boolean>[] = [
+  { value: true, label: "On", title: "Textured, decimated model (default)" },
+  { value: false, label: "Off", title: "Geometry only: the raw decoder mesh, no texture and no face-count target (much larger file)" },
+];
+
 /** Short label used in chips: "bg auto" / "bg always" / "bg simple". */
 export function bgLabel(v: BgRemoval): string {
   return (BG_REMOVALS.find((c) => c.value === v)?.label ?? v).toLowerCase();

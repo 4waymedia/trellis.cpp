@@ -3,6 +3,7 @@
 //   Resolution          segmented   512 · fast / 1024 / 1536 · high
 //   Background removal  segmented   Auto / Always / Simple
 //   UV unwrap           segmented   xatlas / Box
+//   Texture             segmented   On / Off (geometry only)
 //   Output preset       3x2 grid    Icon / Lite / Game / Hero / Handoff / Custom,
 //                                   Custom opens an inline Faces + Atlas panel
 //   Seed                mono input + dice (random seed)
@@ -21,6 +22,7 @@ import {
   FACE_CHOICES,
   PRESETS,
   RESOLUTIONS,
+  TEXTURE_CHOICES,
   UV_UNWRAPS,
   budgetOf,
   matchPreset,
@@ -109,7 +111,7 @@ export function createSettingsEditor(
   initial: GenParams,
   onChange: (p: GenParams) => void = () => {},
 ): SettingsEditor {
-  let params: GenParams = { ...initial, textures: TEXTURE_FORMAT };
+  let params: GenParams = { ...initial, textures: TEXTURE_FORMAT, texture: initial.texture !== false };
   let mode: PresetMode = matchPreset(params)?.id ?? "custom";
 
   const changed = () => onChange({ ...params });
@@ -126,6 +128,10 @@ export function createSettingsEditor(
   });
   const uv = segmented(UV_UNWRAPS, (v) => {
     params.uv = v;
+    changed();
+  });
+  const tex = segmented(TEXTURE_CHOICES, (v) => {
+    params.texture = v;
     changed();
   });
 
@@ -227,16 +233,19 @@ export function createSettingsEditor(
     field("Resolution", res.el),
     field("Background removal", bg.el),
     field("UV unwrap", uv.el),
+    field("Texture", tex.el),
     field("Output preset", presetBlock, summary),
     field("Seed", seedRow),
   );
 
   function set(p: GenParams): void {
-    params = { ...p, textures: TEXTURE_FORMAT };
+    // gallery records saved before the Texture option have no field: textured
+    params = { ...p, textures: TEXTURE_FORMAT, texture: p.texture !== false };
     mode = matchPreset(params)?.id ?? "custom";
     res.select(params.resolution);
     bg.select(params.bgRemoval);
     uv.select(params.uv);
+    tex.select(params.texture);
     seedInput.value = String(params.seed);
     refreshBudget();
   }

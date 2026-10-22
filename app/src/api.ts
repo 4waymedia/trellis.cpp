@@ -1,6 +1,6 @@
 // HTTP client for the resident trellis-server (see src/trellis-server.cpp):
 //   GET  /health   -> "ok"
-//   POST /generate  multipart: image file + seed/resolution/bg_removal/uv/faces/atlas/webp fields
+//   POST /generate  multipart: image file + seed/resolution/bg_removal/uv/faces/atlas/webp/texture fields
 //                   -> model/gltf-binary, or JSON {"error": "..."} on failure.
 
 import { apiBase, loadConfig } from "./config";
@@ -36,6 +36,7 @@ function toForm(image: Blob, p: GenParams): FormData {
   if (p.faces) fd.append("faces", String(p.faces));
   if (p.atlas) fd.append("atlas", String(p.atlas));
   if (p.textures === "png") fd.append("webp", "off");
+  if (p.texture === false) fd.append("texture", "off");
   return fd;
 }
 
