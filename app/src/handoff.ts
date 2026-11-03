@@ -18,7 +18,7 @@
 // tauri.ts (writeHandoffFolder), so the assembly stays testable in a browser.
 
 import { imageExt, inspectGlb, type GlbInfo } from "./glb";
-import { bgLabel, budgetOf, presetName } from "./options";
+import { bgLabel, budgetOf, fovOf, presetName } from "./options";
 import { formatFaces, type GenRecord } from "./types";
 import type { Viewer } from "./viewer";
 
@@ -112,7 +112,12 @@ async function handoffNotes(
     row("Exported:", new Date().toLocaleString()),
     "",
     "Generation (same image + seed + settings reproduces the same model)",
-    row("Model:", "TRELLIS.2 (Microsoft), run locally with trellis.cpp"),
+    row(
+      "Model:",
+      p.model === "pixal3d"
+        ? `Pixal3D (TencentARC, TRELLIS.2 fine-tune), run locally with trellis.cpp; image FOV ${+fovOf(p).toFixed(2)} deg`
+        : "TRELLIS.2 (Microsoft), run locally with trellis.cpp",
+    ),
     row("Resolution:", `${p.resolution}${p.resolution > 512 ? " (cascade)" : ""}`),
     row("Seed:", String(p.seed)),
     row("Preset:", presetName(p)),

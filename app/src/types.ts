@@ -5,6 +5,8 @@ export type BgRemoval = "auto" | "birefnet" | "threshold";
 export type Uv = "xatlas" | "box";
 /** GLB texture encoding: WebP is smaller, PNG opens in every DCC tool / importer. */
 export type TextureFormat = "webp" | "png";
+/** Which flow weights generate the model (server field `model`, CLI `--model`). */
+export type ModelFamily = "trellis" | "pixal3d";
 
 /** Generation knobs mapped onto trellis-server's POST /generate form fields. */
 export interface GenParams {
@@ -24,6 +26,16 @@ export interface GenParams {
   textures?: TextureFormat;
   /** false => geometry only (server field texture=off). */
   texture: boolean;
+  /** Absent = "trellis" (gallery records from before the Model option). */
+  model?: ModelFamily;
+  /**
+   * Pixal3D only: horizontal field of view of the input image in degrees
+   * (server field `fov`, CLI `--fov`). Pixal3D projects the image into the
+   * grid through a camera with this lens; a wrong value tilts straight image
+   * edges (e.g. a bust's cut-off base) and drifts geometry off the silhouette.
+   * Absent = PIXAL3D_DEFAULT_FOV (options.ts). Ignored for TRELLIS.2.
+   */
+  fov?: number;
 }
 
 /**
@@ -45,6 +57,7 @@ export const DEFAULT_PARAMS: GenParams = {
   atlas: 2048,
   textures: TEXTURE_FORMAT,
   texture: true,
+  model: "trellis",
 };
 
 /** A random seed in the range the server accepts (uint32), for "new images get a random seed". */

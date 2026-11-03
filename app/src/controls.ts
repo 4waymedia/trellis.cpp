@@ -1,5 +1,7 @@
 // Settings editor: the per-generation controls from the design handoff.
 //
+//   Model               segmented   TRELLIS.2 / Pixal3D
+//   Image FOV           segmented   15° … 49° + exact degrees (Pixal3D only)
 //   Resolution          segmented   512 · fast / 1024 / 1536 · high
 //   Background removal  segmented   Auto / Always / Simple
 //   UV unwrap           segmented   xatlas / Box
@@ -20,11 +22,16 @@ import {
   ATLAS_CHOICES,
   BG_REMOVALS,
   FACE_CHOICES,
+  FOV_CHOICES,
+  FOV_MAX,
+  FOV_MIN,
+  MODEL_CHOICES,
   PRESETS,
   RESOLUTIONS,
   TEXTURE_CHOICES,
   UV_UNWRAPS,
   budgetOf,
+  fovOf,
   matchPreset,
   presetSub,
   type Choice,
@@ -78,7 +85,7 @@ function segmented<T>(
   choices: readonly Choice<T>[],
   onPick: (value: T) => void,
   compact = false,
-): { el: HTMLElement; select(value: T): void } {
+): { el: HTMLElement; select(value: T): void; enable(value: T, on: boolean, title?: string): void } {
   const root = el("div", compact ? "seg compact" : "seg");
   root.setAttribute("role", "radiogroup");
   const buttons = choices.map((c) => {
@@ -100,7 +107,14 @@ function segmented<T>(
       buttons[i].setAttribute("aria-checked", String(on));
     });
   }
-  return { el: root, select };
+  /** Enable/disable one choice; `title` replaces its tooltip while disabled. */
+  function enable(value: T, on: boolean, title?: string): void {
+    const i = choices.findIndex((c) => c.value === value);
+    if (i < 0) return;
+    buttons[i].disabled = !on;
+    buttons[i].title = !on && title ? title : (choices[i].title ?? "");
+  }
+  return { el: root, select, enable };
 }
 
 /**
@@ -116,6 +130,60 @@ export function createSettingsEditor(
 
   const changed = () => onChange({ ...params });
   const root = el("div", "editor");
+
+  // --- model + image FOV (the FOV field only exists for Pixal3D) ---
+  const model = segmented(MODEL_CHOICES, (v) => {
+    params.model = v;
+    // Pixal3D publishes no res-512 texture flow: at 512 the engine writes an untextured,
+    // un-decimated decoder mesh. Move to 1024 rather than let that happen silently.
+    if (v === "pixal3d" && params.resolution === 512) {
+      params.resolution = 1024;
+      res.select(1024);
+    }
+    refreshFov();
+    changed();
+  });
+  const fovSummary = el("span", "field-summary");
+  const fovSeg = segmented(
+    FOV_CHOICES,
+    (v) => {
+      params.fov = v;
+      refreshFov();
+      changed();
+    },
+    true,
+  );
+  const fovInput = el("input", "seed-input fov-input");
+  fovInput.type = "text";
+  fovInput.inputMode = "decimal";
+  fovInput.setAttribute("aria-label", "Image field of view in degrees");
+  fovInput.title = `Exact horizontal field of view, ${FOV_MIN}-${FOV_MAX}°`;
+  fovInput.addEventListener("input", () => {
+    const n = parseFloat(fovInput.value);
+    if (isFinite(n) && n >= FOV_MIN && n <= FOV_MAX) {
+      params.fov = n;
+      refreshFov(false);
+      changed();
+    }
+  });
+  fovInput.addEventListener("blur", () => refreshFov()); // drop invalid text
+  const fovRow = el("div", "fov-row");
+  fovRow.append(fovSeg.el, fovInput);
+  const fovField = field("Image FOV", fovRow, fovSummary);
+  fovField.title =
+    "The lens the picture was taken with, as Pixal3D sees it. Lower = more telephoto. " +
+    "Too wide and straight edges (a bust's cut-off base, the floor) come out tilted; too narrow and the shape turns boxy.";
+
+  /** Show/hide the FOV field and sync its controls with params. */
+  function refreshFov(syncInput = true): void {
+    const pix = params.model === "pixal3d";
+    fovField.classList.toggle("hidden", !pix);
+    res.enable(512, !pix, "Not available with Pixal3D: it has no 512 texture model, so 512 gives an untextured raw mesh");
+    const f = fovOf(params);
+    fovSeg.select(f);
+    if (syncInput) fovInput.value = String(+f.toFixed(2));
+    fovSummary.textContent = `${+f.toFixed(2)}°`;
+  }
 
   // --- resolution / background / UV ---
   const res = segmented(RESOLUTIONS, (v) => {
@@ -230,6 +298,8 @@ export function createSettingsEditor(
   seedRow.append(seedInput, dice);
 
   root.append(
+    field("Model", model.el),
+    fovField,
     field("Resolution", res.el),
     field("Background removal", bg.el),
     field("UV unwrap", uv.el),
@@ -242,6 +312,10 @@ export function createSettingsEditor(
     // gallery records saved before the Texture option have no field: textured
     params = { ...p, textures: TEXTURE_FORMAT, texture: p.texture !== false };
     mode = matchPreset(params)?.id ?? "custom";
+    // gallery records saved before the Model option have no field: TRELLIS.2
+    params.model = params.model ?? "trellis";
+    model.select(params.model);
+    refreshFov();
     res.select(params.resolution);
     bg.select(params.bgRemoval);
     uv.select(params.uv);

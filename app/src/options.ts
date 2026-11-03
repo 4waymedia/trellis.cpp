@@ -9,7 +9,7 @@
 //   Background removal  Auto -> auto · Always -> birefnet · Simple -> threshold
 //   UV unwrap           xatlas -> xatlas · Box -> box (faster, looser packing)
 
-import { formatFaces, type BgRemoval, type GenParams, type Resolution, type Uv } from "./types";
+import { formatFaces, type BgRemoval, type GenParams, type ModelFamily, type Resolution, type Uv } from "./types";
 
 /** One choice in a segmented control. */
 export interface Choice<T> {
@@ -40,6 +40,50 @@ export const TEXTURE_CHOICES: readonly Choice<boolean>[] = [
   { value: true, label: "On", title: "Textured, decimated model (default)" },
   { value: false, label: "Off", title: "Geometry only: the raw decoder mesh, no texture and no face-count target (much larger file)" },
 ];
+
+export const MODEL_CHOICES: readonly Choice<ModelFamily>[] = [
+  { value: "trellis", label: "TRELLIS.2", title: "Microsoft TRELLIS.2 (default). Reads the whole image at once; invents a clean, symmetric shape" },
+  {
+    value: "pixal3d",
+    label: "Pixal3D",
+    title:
+      "TencentARC Pixal3D: a TRELLIS.2 fine-tune that projects each 3D cell onto the image, so the shape follows the picture more literally. " +
+      "Needs the 5 pixal3d_*.gguf files in the models folder. Set the image's field of view below. No texture at 512",
+  },
+];
+
+/**
+ * Studio's starting FOV for Pixal3D. The engine's own default is 49.13 (Pixal3D's,
+ * where upstream estimates the real value per image with MoGe-2, not ported). On
+ * Reapers art 49 tilted cut-off edges by ~15°; 20-30 gave level bases (Oct 31 sweep:
+ * 30 -> +1.5°, 20 -> +5.8°, 10 -> boxy). Retune here.
+ */
+export const PIXAL3D_DEFAULT_FOV = 25;
+/** Engine default, offered as a choice so the stock behavior stays one click away. */
+export const PIXAL3D_ENGINE_FOV = 49.13;
+/** Valid range for the exact-value input (the server accepts 0 < fov < 180). */
+export const FOV_MIN = 5;
+export const FOV_MAX = 120;
+
+export const FOV_CHOICES: readonly Choice<number>[] = [
+  { value: 15, label: "15°", title: "Long telephoto: almost flat-on. Below ~15 shapes turn boxy" },
+  { value: 20, label: "20°", title: "Telephoto: product shots, portraits, most game/concept art" },
+  { value: 25, label: "25°", title: "Studio default for Pixal3D: level bases on Reapers art" },
+  { value: 30, label: "30°", title: "Short telephoto" },
+  { value: 40, label: "40°", title: "Normal lens" },
+  { value: PIXAL3D_ENGINE_FOV, label: "49°", title: "Pixal3D's own default (49.13°): wide; straight cut-off edges come out tilted" },
+];
+
+/** FOV the params will actually use (Pixal3D only). */
+export function fovOf(p: GenParams): number {
+  return p.fov ?? PIXAL3D_DEFAULT_FOV;
+}
+
+/** Short model label for chips and notes: "TRELLIS.2" / "Pixal3D 25°". */
+export function modelLabel(p: GenParams): string {
+  if (p.model !== "pixal3d") return "TRELLIS.2";
+  return `Pixal3D ${+fovOf(p).toFixed(2)}°`;
+}
 
 /** Short label used in chips: "bg auto" / "bg always" / "bg simple". */
 export function bgLabel(v: BgRemoval): string {
@@ -111,9 +155,10 @@ export function budgetChip(p: GenParams): string {
   return `${presetName(p)} ${formatFaces(faces)}/${atlas}`;
 }
 
-/** Every setting as chips: ["1024", "bg auto", "xatlas", "Game 50K/2048", "seed 42"]. */
+/** Every setting as chips: ["1024", "bg auto", "xatlas", "Game 50K/2048", "seed 42"] (+ "Pixal3D 25°" first when used). */
 export function paramChips(p: GenParams): string[] {
-  return [`${p.resolution}`, `bg ${bgLabel(p.bgRemoval)}`, p.uv, budgetChip(p), `seed ${p.seed}`];
+  const chips = [`${p.resolution}`, `bg ${bgLabel(p.bgRemoval)}`, p.uv, budgetChip(p), `seed ${p.seed}`];
+  return p.model === "pixal3d" ? [modelLabel(p), ...chips] : chips;
 }
 
 /** Gallery/queue tile label: "1024 · Game". */
