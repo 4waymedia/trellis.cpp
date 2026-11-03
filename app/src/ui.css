@@ -59,6 +59,10 @@
   --line-4: rgba(255, 255, 255, 0.1);
   --line-5: rgba(255, 255, 255, 0.12);
 
+  /* scrollbars: transparent track, faint thumb */
+  --scroll-thumb: rgba(255, 255, 255, 0.12);
+  --scroll-thumb-hover: rgba(255, 255, 255, 0.22);
+
   /* radii */
   --r-chip: 5px;
   --r-seg: 7px;
@@ -346,6 +350,10 @@ body.sorting, body.sorting * { cursor: grabbing !important; user-select: none; }
 }
 .custom-panel .field-label { font-size: 11.5px; }
 
+/* image FOV (Pixal3D): quick picks + exact degrees */
+.fov-row { display: grid; grid-template-columns: minmax(0, 1fr) 64px; gap: 8px; align-items: center; }
+.fov-input { height: 28px; font-size: 12px; text-align: right; }
+
 /* seed: mono input + dice */
 .seed-row { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 8px; }
 .seed-input {
@@ -445,6 +453,13 @@ body.sorting, body.sorting * { cursor: grabbing !important; user-select: none; }
 }
 .info-btn:hover { background: rgba(30, 33, 40, 0.9); color: #fff; }
 .info-btn[aria-expanded="true"] { color: var(--accent-light); border-color: var(--accent); }
+.viewer-info-btns { display: flex; gap: 6px; }
+/* Source image card (image button next to (i); main.ts setSourceOpen). */
+.source-panel { pointer-events: auto; padding: 6px; border-radius: var(--r-card); line-height: 0; }
+.source-panel img {
+  display: block; max-width: min(260px, 40vw); max-height: 38vh;
+  object-fit: contain; border-radius: calc(var(--r-card) - 4px);
+}
 .info-panel {
   pointer-events: auto; user-select: text; max-width: min(100%, 520px); min-width: 0;
   display: flex; flex-direction: column; gap: 6px;
@@ -530,3 +545,31 @@ body.sorting, body.sorting * { cursor: grabbing !important; user-select: none; }
 .check { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; cursor: pointer; color: var(--text-2); }
 .check input { margin-top: 2px; accent-color: var(--accent); }
 .check small { display: block; margin-top: 2px; font-size: 11px; }
+
+/* ===================== Scrollbars ===================== */
+/* Thin scrollbars with a transparent track everywhere. Chromium (WebView2 on
+   Windows) uses the standard properties; WebKit (macOS, WebKitGTK on Linux)
+   uses the ::-webkit-scrollbar rules. */
+* { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; background: transparent; }
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb) padding-box;
+  border: 2px solid transparent; border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover { background-color: var(--scroll-thumb-hover); }
+
+/* ===================== Window controls ===================== */
+/* Custom title bar (titlebar.ts): the OS one is off, so the header drags the
+   window and carries minimize / maximize / close at its right edge. */
+.custom-titlebar .topbar { padding-right: 0; user-select: none; -webkit-user-select: none; }
+.custom-titlebar .topbar-right { align-self: stretch; }
+.window-controls { display: flex; align-self: stretch; margin-left: 4px; }
+.win-btn {
+  width: 46px; display: flex; align-items: center; justify-content: center;
+  background: transparent; border: 0; padding: 0; cursor: default;
+  color: var(--text-label);
+}
+.win-btn:hover { background: rgba(255, 255, 255, 0.06); color: var(--text); }
+.win-close:hover { background: #e5484d; color: #fff; }

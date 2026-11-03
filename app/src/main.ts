@@ -9,11 +9,12 @@ import { loadConfig } from "./config";
 import { createSettingsEditor } from "./controls";
 import { inspectGlb, type GlbInfo } from "./glb";
 import { buildHandoff } from "./handoff";
-import { paramChips, tileLabel } from "./options";
+import { fovOf, paramChips, tileLabel } from "./options";
 import { getPrefs } from "./prefs";
 import { GenerationQueue } from "./queue";
 import { renderSettings } from "./settings";
 import { StageTracker } from "./stages";
+import { initTitlebar } from "./titlebar";
 import { all, clear as clearStore, del as removeRecord, get as getRecord, isEphemeral, newId, put } from "./store";
 import { isTauri, listen, revealInOutput, saveBytes, saveToOutputDir, writeHandoffFolder } from "./tauri";
 import { DEFAULT_PARAMS, formatFaces, randomSeed, type GenParams, type GenRecord } from "./types";
@@ -48,6 +49,9 @@ const viewerChips = $("viewer-chips");
 const viewerStats = $("viewer-stats");
 const infoBtn = $<HTMLButtonElement>("info-btn");
 const infoPanel = $("info-panel");
+const sourceBtn = $<HTMLButtonElement>("source-btn");
+const sourcePanel = $("source-panel");
+const sourceImg = $<HTMLImageElement>("source-img");
 const shadeSeg = $("shade-seg");
 const resetViewBtn = $<HTMLButtonElement>("reset-view");
 const saveGlbBtn = $<HTMLButtonElement>("save-glb");
@@ -61,6 +65,7 @@ const serverLabel = $("server-label");
 const setupBanner = $("setup-banner");
 
 // ---- state ----
+initTitlebar();
 const viewer = new Viewer($("viewer-mount"));
 let inputImage: Blob | null = null;
 let inputName = "input.png";
@@ -301,8 +306,36 @@ function setInfoOpen(open: boolean): void {
 }
 infoBtn.addEventListener("click", () => setInfoOpen(infoPanel.classList.contains("hidden")));
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !infoPanel.classList.contains("hidden")) setInfoOpen(false);
+  if (e.key !== "Escape") return;
+  if (!infoPanel.classList.contains("hidden")) setInfoOpen(false);
+  if (!sourcePanel.classList.contains("hidden")) setSourceOpen(false);
 });
+
+/**
+ * Open or close the source image card behind the image button. Like the
+ * details card, it stays as the user left it when another model loads.
+ */
+function setSourceOpen(open: boolean): void {
+  sourcePanel.classList.toggle("hidden", !open);
+  sourceBtn.setAttribute("aria-expanded", String(open));
+  sourceBtn.title = open ? "Hide source image" : "Source image";
+}
+sourceBtn.addEventListener("click", () => setSourceOpen(sourcePanel.classList.contains("hidden")));
+
+let sourceUrl: string | null = null;
+/**
+ * The image the shown model was generated from, or null (a .glb opened from
+ * disk has none): that hides the image button and its card.
+ */
+function setSource(image: Blob | null): void {
+  if (sourceUrl) URL.revokeObjectURL(sourceUrl);
+  sourceUrl = image ? URL.createObjectURL(image) : null;
+  if (sourceUrl) sourceImg.src = sourceUrl;
+  else sourceImg.removeAttribute("src");
+  sourceBtn.classList.toggle("hidden", !image);
+  if (!image) sourcePanel.classList.add("hidden");
+  else if (sourceBtn.getAttribute("aria-expanded") === "true") sourcePanel.classList.remove("hidden");
+}
 
 /**
  * What a GLB actually contains, as stats-pill parts: face count, atlas size
@@ -365,6 +398,7 @@ async function openGlb(file: File): Promise<void> {
   currentGlb = file;
   currentName = file.name;
   activeId = null;
+  setSource(null);
   setViewerTools(true);
   exportBtn.disabled = true;
   const { parts } = await glbStats(file);
@@ -496,6 +530,7 @@ async function doGenerate(params: GenParams = readParams()): Promise<void> {
     progressBar.style.width = "100%";
     currentGlb = glb;
     currentName = name;
+    setSource(image);
 
     const rec: GenRecord = {
       id: newId(),
@@ -517,7 +552,8 @@ async function doGenerate(params: GenParams = readParams()): Promise<void> {
       try {
         const bytes = new Uint8Array(await glb.arrayBuffer());
         const base = name.replace(/\.[^.]+$/, "") || "model";
-        const fname = `${base}_${params.resolution}_seed${params.seed}_${rec.id}.glb`;
+        const fam = params.model === "pixal3d" ? `_pixal3d-fov${+fovOf(params).toFixed(2)}` : "";
+        const fname = `${base}${fam}_${params.resolution}_seed${params.seed}_${rec.id}.glb`;
         savedPath = await saveToOutputDir(fname, bytes);
       } catch (e) {
         toast(`Auto-save to output folder failed: ${(e as Error).message}`, "err");
@@ -666,6 +702,7 @@ async function loadRecord(id: string): Promise<void> {
   currentGlb = rec.glb;
   currentName = rec.name;
   activeId = rec.id;
+  setSource(rec.input);
   setViewerTools(true);
   await showResultInfo(rec.name, rec.params, rec.glb, rec.durationMs);
   await refreshGallery();
