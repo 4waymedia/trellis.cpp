@@ -66,6 +66,7 @@ static void audit(const char* tag, const std::vector<int32_t>& faces) {
 }
 
 int main(int argc, char** argv) {
+    fprintf(stderr, "post-replay: %d args\n", argc - 1); fflush(stderr);
     if (argc < 3) { fprintf(stderr, "usage: post-replay <dump.bin|triangles.obj> <out.glb> [opts] [--dump-geometry mesh.obj]\n"); return 1; }
     const char* dump = argv[1];
     const char* out = argv[2];
@@ -204,16 +205,23 @@ int main(int argc, char** argv) {
         FILE* f = fopen(dump, "rb");
         if (!f) { fprintf(stderr, "cannot open %s\n", dump); return 1; }
         if (fread(&V,4,1,f)+fread(&F,4,1,f)+fread(&Mv,4,1,f)+fread(&res,4,1,f) != 4 ||
-            V <= 0 || F <= 0 || Mv < 0 || res <= 0) return 1;
+            V <= 0 || F <= 0 || Mv < 0 || res <= 0) {
+            fprintf(stderr, "%s: bad header (V=%d F=%d Mv=%d res=%d)\n", dump, V, F, Mv, res);
+            return 1;
+        }
         if (!geometry_res) geometry_res = res;
         verts.resize((size_t)V*3);
         faces.resize((size_t)F*3);
         coords.resize((size_t)Mv);
         pbr6.resize((size_t)Mv*6);
-        if (fread(verts.data(),4,verts.size(),f) != verts.size()) return 1;
-        if (fread(faces.data(),4,faces.size(),f) != faces.size()) return 1;
-        for (auto& c : coords) if (fread(c.data(),4,3,f) != 3) return 1;
-        if (fread(pbr6.data(),4,pbr6.size(),f) != pbr6.size()) return 1;
+        auto short_read = [&](const char* what) {
+            fprintf(stderr, "%s: truncated while reading %s (V=%d F=%d Mv=%d)\n", dump, what, V, F, Mv);
+            return 1;
+        };
+        if (fread(verts.data(),4,verts.size(),f) != verts.size()) return short_read("vertices");
+        if (fread(faces.data(),4,faces.size(),f) != faces.size()) return short_read("faces");
+        for (auto& c : coords) if (fread(c.data(),4,3,f) != 3) return short_read("voxel coords");
+        if (fread(pbr6.data(),4,pbr6.size(),f) != pbr6.size()) return short_read("PBR values");
         fclose(f);
     }
     printf("loaded: V=%d F=%d voxels=%d pbr_res=%d geometry_res=%d\n", V, F, Mv, res, geometry_res);
